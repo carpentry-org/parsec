@@ -130,14 +130,15 @@ that call `Parser.run` directly.")
   (doc byte "consumes a specific byte (as `Char`). Fails empty if
 the input doesn't match or is at EOF.")
   (defn byte [b]
-    (Parser.init (fn [src len cur]
-      (let [pos @(Cursor.pos cur)]
-        (if (Int.>= pos len)
-          (Reply.ErrEmpty (ParseErr.expected-at cur (fmt "'%c'" b)))
-          (let [c (String.char-at src pos)]
-            (if (Char.= c b)
-              (Reply.OkConsumed c (Cursor.advance cur c))
-              (Reply.ErrEmpty (ParseErr.expected-at cur (fmt "'%c'" b))))))))))
+    (let [lbl (fmt "'%c'" b)]
+      (Parser.init (fn [src len cur]
+        (let [pos @(Cursor.pos cur)]
+          (if (Int.>= pos len)
+            (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))
+            (let [c (String.char-at src pos)]
+              (if (Char.= c b)
+                (Reply.OkConsumed c (Cursor.advance cur c))
+                (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))))))))))
 
   (doc any-byte "consumes any byte; fails only at end of input.")
   (defn any-byte []
@@ -303,24 +304,25 @@ the real parser before parsing. Companion to `recurse`.")
 Atomic: on partial mismatch, fails empty (no consumed failure
 mid-string).")
   (defn string [s]
-    (Parser.init (fn [src len cur]
-      (let [slen (String.length &s)
-            pos  @(Cursor.pos cur)]
-        (if (Int.> (Int.+ pos slen) len)
-          (Reply.ErrEmpty (ParseErr.expected-at cur (fmt "\"%s\"" &s)))
-          (let-do [matches true]
-            (for [i 0 slen]
-              (when (not (Char.= (String.char-at &s i)
-                                 (String.char-at src (Int.+ pos i))))
-                (set! matches false)))
-            (if matches
-              (let-do [c @cur]
-                (for [i 0 slen]
-                  (set! c (Cursor.advance &c (String.char-at src (Int.+ pos i)))))
-                (if (Int.> slen 0)
-                  (Reply.OkConsumed @&s c)
-                  (Reply.OkEmpty @&s c)))
-              (Reply.ErrEmpty (ParseErr.expected-at cur (fmt "\"%s\"" &s))))))))))
+    (let [slen (String.length &s)
+          lbl  (fmt "\"%s\"" &s)]
+      (Parser.init (fn [src len cur]
+        (let [pos @(Cursor.pos cur)]
+          (if (Int.> (Int.+ pos slen) len)
+            (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))
+            (let-do [matches true]
+              (for [i 0 slen]
+                (when (not (Char.= (String.char-at &s i)
+                                   (String.char-at src (Int.+ pos i))))
+                  (set! matches false)))
+              (if matches
+                (let-do [c @cur]
+                  (for [i 0 slen]
+                    (set! c (Cursor.advance &c (String.char-at src (Int.+ pos i)))))
+                  (if (Int.> slen 0)
+                    (Reply.OkConsumed @&s c)
+                    (Reply.OkEmpty @&s c)))
+                (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))))))))))
 
   (doc optional "if `p` succeeds, wraps the value in `Just`; if `p`
 fails empty, succeeds with `Nothing` without consuming. Consumed
@@ -554,8 +556,11 @@ their expected sets. A consumed failure of any parser short-circuits
                i 0
                going true
                result (the (Reply a) (Reply.ErrEmpty (ParseErr.empty-at cur)))
-               merged-err (ParseErr.empty-at cur)
-               started false]
+               labels []
+               err-pos  @(Cursor.pos  cur)
+               err-line @(Cursor.line cur)
+               err-col  @(Cursor.col  cur)
+               err-unx (the (Maybe String) (Maybe.Nothing))]
         (while-do (and going (Int.< i n))
           (match (~(Parser.run (Array.unsafe-nth &ps i)) src len cur)
             (Reply.OkConsumed v c)
@@ -568,13 +573,20 @@ their expected sets. A consumed failure of any parser short-circuits
               (do (set! result (Reply.ErrConsumed e))
                   (set! going false))
             (Reply.ErrEmpty e)
-              (if started
-                (set! merged-err (ParseErr.merge merged-err e))
-                (do (set! merged-err e)
-                    (set! started true))))
+              (let-do [exp (ParseErr.expected &e)
+                       m (Array.length exp)]
+                (set! err-pos  @(ParseErr.pos  &e))
+                (set! err-line @(ParseErr.line &e))
+                (set! err-col  @(ParseErr.col  &e))
+                (match @(ParseErr.unexpected &e)
+                  (Maybe.Just s)  (set! err-unx (Maybe.Just s))
+                  (Maybe.Nothing) ())
+                (for [j 0 m]
+                  (set! labels (Array.push-back labels
+                                                @(Array.unsafe-nth exp j))))))
           (set! i (Int.inc i)))
         (if going
-          (Reply.ErrEmpty merged-err)
+          (Reply.ErrEmpty (ParseErr.init err-pos err-line err-col err-unx labels))
           result)))))
 
   (doc slice-of "runs `p`; on success, replaces `p`'s value with

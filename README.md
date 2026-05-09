@@ -69,6 +69,11 @@ rebuilds the parser tree on every call.
 - [`lisp.carp`](examples/lisp.carp) are s-expressions with a recursive `Box` AST
 - [`arith.carp`](examples/arith.carp) is an arithmetic expression evaluator
   with operator precedence and parens
+- [`carp.carp`](examples/carp.carp) is a full Carp source-form reader,
+  mirroring the language's own `Parsing.hs` — every atom type
+  (int/byte/long/float/double, strings/raw/pattern, chars, symbols),
+  every compound (lists, arrays, static arrays, dictionaries), and
+  every reader macro (`&` `~` `@` `'` `` ` `` `%` `%@`)
 
 
 <hr/>

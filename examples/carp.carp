@@ -1,0 +1,686 @@
+; A full Carp source-form reader, mirroring `Parsing.hs` from the
+; compiler. Handles every form the language's own parser does:
+;
+;   - numbers   int, byte (`Nb`), long (`Nl`), float (`N.Nf` / `Nf`),
+;               double (`N.N`), with `0x` / `0b` bases and optional
+;               sign
+;   - strings   regular with the full escape set, raw (`r\"...\"`),
+;               and pattern (`#\"...\"`)
+;   - chars     `\\X`, named (`\\space`, `\\newline`, `\\tab`,
+;               `\\return`, `\\backspace`, `\\formfeed`, `\\\"`),
+;               hex (`\\uHHHH`)
+;   - symbols   dot-separated segments over alphanum +
+;               `+-*/?!><=_:` + high-ASCII; `true`/`false` recognized
+;   - compound  lists `()`, arrays `[]`, static arrays `$[]`,
+;               dictionaries `{}`
+;   - reader    `&` `~` `@` `'` `` ` `` `%@` `%`
+;     macros    (longest match first)
+;   - skipped   spaces, tabs, newlines, commas, `;`-line comments
+;
+; Recursion uses `Parser.recurse` against a top-level `*carp*` cell.
+
+(load "../parsec.carp")
+
+; ----------------------------------------------------------------
+; AST
+; ----------------------------------------------------------------
+
+(deftype Carp
+  (Int        [Int])
+  (Byt        [Byte])
+  (Lng        [Long])
+  (Flt        [Float])
+  (Dbl        [Double])
+  (Bol        [Bool])
+  (Chr        [Char])
+  (Str        [String])
+  (Pat        [String])
+  (Sym        [(Array String)])             ; segments: ["Foo" "Bar" "baz"]
+  (Lst        [(Array (Box Carp))])
+  (Arr        [(Array (Box Carp))])
+  (StaticArr  [(Array (Box Carp))])
+  (Dict       [(Array (Box Carp))]))
+
+; ----------------------------------------------------------------
+; Pretty-printer (round-trip helper for the demo).
+; ----------------------------------------------------------------
+
+(defmodule Carp
+  (private join-children)
+  (hidden  join-children)
+  (defn join-children [items]
+    (let-do [out @""]
+      (for [i 0 (Array.length items)]
+        (do
+          (when (Int.> i 0) (set! out (String.append &out " ")))
+          (set! out (String.append &out
+                       &(Carp.str (Box.peek (Array.unsafe-nth items i)))))))
+      out))
+
+  (private join-segments)
+  (hidden  join-segments)
+  (defn join-segments [segs]
+    (let-do [out @""]
+      (for [i 0 (Array.length segs)]
+        (do
+          (when (Int.> i 0) (set! out (String.append &out ".")))
+          (set! out (String.append &out (Array.unsafe-nth segs i)))))
+      out))
+
+  (private escape-string-byte)
+  (hidden  escape-string-byte)
+  (defn escape-string-byte [b]
+    (cond
+      (Char.= b \\)        @"\\\\"
+      (Char.= b \")        @"\\\""
+      (Char.= b \newline)  @"\\n"
+      (Char.= b \tab)      @"\\t"
+      (Char.= b \return)   @"\\r"
+      ; Preserve the raw byte. `String.from-chars` would UTF-8-re-encode
+      ; the value as a codepoint, doubling multi-byte UTF-8 sequences.
+      (String.from-bytes &[(Byte.from-int (Int.bit-and 0xff (Char.to-int b)))])))
+
+  (private escape-string)
+  (hidden  escape-string)
+  (defn escape-string [s]
+    (let-do [out @""
+             n (String.length s)]
+      (for [i 0 n]
+        (set! out (String.append &out
+                     &(escape-string-byte (String.char-at s i)))))
+      out))
+
+  (private show-char)
+  (hidden  show-char)
+  (defn show-char [c]
+    (cond
+      (Char.= c \space)     @"\\space"
+      (Char.= c \tab)       @"\\tab"
+      (Char.= c \newline)   @"\\newline"
+      (Char.= c \return)    @"\\return"
+      (Char.= c \backspace) @"\\backspace"
+      (Char.= c \formfeed)  @"\\formfeed"
+      (Char.= c \")         @"\\\""
+      (Int.> (Char.to-int c) 127) (fmt "\\u%04x" (Char.to-int c))
+      (fmt "\\%c" c)))
+
+  (defn str [c]
+    (match-ref c
+      (Int n)       (Int.str @n)
+      (Byt b)       (Byte.str @b)                  ; Byte.str already adds `b`
+      (Lng n)       (String.append &(Long.str @n) "l")
+      (Flt f)       (Float.str @f)                 ; Float.str already adds `f`
+      (Dbl d)       (Double.str @d)
+      (Bol b)       (if @b @"true" @"false")
+      (Chr c)       (show-char @c)
+      (Str s)       (fmt "\"%s\"" &(escape-string s))
+      (Pat p)       (fmt "#\"%s\"" p)
+      (Sym segs)    (join-segments segs)
+      (Lst items)   (fmt "(%s)"  &(join-children items))
+      (Arr items)   (fmt "[%s]"  &(join-children items))
+      (StaticArr items) (fmt "$[%s]" &(join-children items))
+      (Dict items)  (fmt "{%s}"  &(join-children items))))
+  (implements str Carp.str))
+
+; ----------------------------------------------------------------
+; Whitespace + comments. Treats `,` as whitespace and skips `;`-line
+; comments along with normal spaces.
+; ----------------------------------------------------------------
+
+(defn ws-byte? [c]
+  (or (or (Char.= c \space) (Char.= c \tab))
+      (or (or (Char.= c \newline) (Char.= c \return))
+          (Char.= c \,))))
+
+(defn skip-ws []
+  (Parser.map
+    (Parser.many
+      (Parser.alt
+        (Parser.map (Parser.take-while1 (fn [c] (ws-byte? c))) (fn [_] ()))
+        (Parser.map
+          (Parser.seq (Parser.byte \;)
+                      (Parser.take-while (fn [c] (not (Char.= c \newline)))))
+          (fn [_] ()))))
+    (fn [_] ())))
+
+; ----------------------------------------------------------------
+; Character classes for digits and symbols.
+; ----------------------------------------------------------------
+
+(defn digit? [c] (and (Char.>= c \0) (Char.<= c \9)))
+
+(defn hex-digit? [c]
+  (or (digit? c)
+      (or (and (Char.>= c \a) (Char.<= c \f))
+          (and (Char.>= c \A) (Char.<= c \F)))))
+
+(defn bin-digit? [c] (or (Char.= c \0) (Char.= c \1)))
+
+(defn alpha? [c]
+  (or (and (Char.>= c \A) (Char.<= c \Z))
+      (and (Char.>= c \a) (Char.<= c \z))))
+
+(defn sym-extra? [c]
+  (or (or (or (Char.= c \+) (Char.= c \-))
+          (or (Char.= c \*) (Char.= c \/)))
+      (or (or (or (Char.= c \?) (Char.= c \!))
+              (or (Char.= c \>) (Char.= c \<)))
+          (or (or (Char.= c \=) (Char.= c \_))
+              (Char.= c \:)))))
+
+(defn high-ascii? [c]
+  (Int.> (Int.bit-and 0xff (Char.to-int c)) 127))
+
+(defn sym-byte? [c]
+  (or (or (alpha? c) (digit? c))
+      (or (sym-extra? c) (high-ascii? c))))
+
+; ----------------------------------------------------------------
+; Numbers
+; ----------------------------------------------------------------
+
+; Reads the textual form of a possibly-signed numeric literal, before
+; any type suffix (`b`, `l`, `f`) or fractional part. Allows hex and
+; binary bases.
+(defn raw-number-text []
+  (Parser.choice
+    [(Parser.try
+       (Parser.slice-of
+         (Parser.seq (Parser.string @"0x")
+                     (Parser.take-while1 (fn [c] (hex-digit? c))))))
+     (Parser.try
+       (Parser.slice-of
+         (Parser.seq (Parser.string @"0b")
+                     (Parser.take-while1 (fn [c] (bin-digit? c))))))
+     (Parser.slice-of
+       (Parser.seq (Parser.optional (Parser.byte \-))
+                   (Parser.take-while1 (fn [c] (digit? c)))))]))
+
+(defn parse-int-text [s]
+  (cond
+    (and (Int.>= (String.length &s) 2)
+         (= "0x" &(String.slice &s 0 2)))
+      (let-do [acc 0l
+               digits &(String.slice &s 2 (String.length &s))
+               n (String.length digits)]
+        (for [i 0 n]
+          (set! acc (Long.+ (Long.* acc 16l)
+                            (Long.from-int (hex-value (String.char-at digits i))))))
+        (Maybe.Just acc))
+    (and (Int.>= (String.length &s) 2)
+         (= "0b" &(String.slice &s 0 2)))
+      (let-do [acc 0l
+               digits &(String.slice &s 2 (String.length &s))
+               n (String.length digits)]
+        (for [i 0 n]
+          (set! acc (Long.+ (Long.bit-shift-left acc 1l)
+                            (if (Char.= (String.char-at digits i) \1) 1l 0l))))
+        (Maybe.Just acc))
+    (Long.from-string &s)))
+
+(defn integer-p []
+  (Parser.bind (raw-number-text)
+    (fn [s]
+      (match (parse-int-text @&s)
+        (Maybe.Just n)  (Parser.pure (Carp.Int (Long.to-int n)))
+        (Maybe.Nothing) (Parser.fail @"integer")))))
+
+(defn byte-p []
+  (Parser.bind (raw-number-text)
+    (fn [s]
+      (Parser.bind (Parser.byte \b)
+        (fn [_]
+          (match (parse-int-text @&s)
+            (Maybe.Just n)  (Parser.pure (Carp.Byt (Byte.from-int (Long.to-int n))))
+            (Maybe.Nothing) (Parser.fail @"byte")))))))
+
+(defn long-p []
+  (Parser.bind (raw-number-text)
+    (fn [s]
+      (Parser.bind (Parser.byte \l)
+        (fn [_]
+          (match (parse-int-text @&s)
+            (Maybe.Just n)  (Parser.pure (Carp.Lng n))
+            (Maybe.Nothing) (Parser.fail @"long")))))))
+
+(defn float-no-period-p []
+  (Parser.bind (raw-number-text)
+    (fn [s]
+      (Parser.bind (Parser.byte \f)
+        (fn [_]
+          (match (Double.from-string &s)
+            (Maybe.Just d)  (Parser.pure (Carp.Flt (Double.to-float d)))
+            (Maybe.Nothing) (Parser.fail @"float")))))))
+
+(defn float-p []
+  (Parser.bind (Parser.slice-of
+                 (Parser.seq
+                   (Parser.optional (Parser.byte \-))
+                   (Parser.seq
+                     (Parser.take-while1 (fn [c] (digit? c)))
+                     (Parser.seq (Parser.byte \.)
+                                 (Parser.take-while1 (fn [c] (digit? c)))))))
+    (fn [s]
+      (Parser.bind (Parser.byte \f)
+        (fn [_]
+          (match (Double.from-string &s)
+            (Maybe.Just d)  (Parser.pure (Carp.Flt (Double.to-float d)))
+            (Maybe.Nothing) (Parser.fail @"float")))))))
+
+(defn double-p []
+  (Parser.bind (Parser.slice-of
+                 (Parser.seq
+                   (Parser.optional (Parser.byte \-))
+                   (Parser.seq
+                     (Parser.take-while1 (fn [c] (digit? c)))
+                     (Parser.seq (Parser.byte \.)
+                                 (Parser.take-while1 (fn [c] (digit? c)))))))
+    (fn [s]
+      (match (Double.from-string &s)
+        (Maybe.Just d)  (Parser.pure (Carp.Dbl d))
+        (Maybe.Nothing) (Parser.fail @"double")))))
+
+(defn number-p []
+  (Parser.choice
+    [(Parser.try (float-p))
+     (Parser.try (float-no-period-p))
+     (Parser.try (byte-p))
+     (Parser.try (double-p))
+     (Parser.try (long-p))
+     (integer-p)]))
+
+; ----------------------------------------------------------------
+; Strings
+; ----------------------------------------------------------------
+
+(defn hex-value [c]
+  (cond
+    (and (Char.>= c \0) (Char.<= c \9)) (Int.- (Char.to-int c) (Char.to-int \0))
+    (and (Char.>= c \a) (Char.<= c \f)) (Int.+ 10 (Int.- (Char.to-int c) (Char.to-int \a)))
+    (and (Char.>= c \A) (Char.<= c \F)) (Int.+ 10 (Int.- (Char.to-int c) (Char.to-int \A)))
+    0))
+
+(defn read-hex [src pos count]
+  (let-do [acc 0]
+    (for [i 0 count]
+      (set! acc (Int.+ (Int.* acc 16)
+                       (hex-value (String.char-at src (Int.+ pos i))))))
+    acc))
+
+; Pushes a codepoint into the byte stream. `String.from-chars`
+; UTF-8-encodes each `Char` it sees, so we just push the codepoint
+; verbatim and let it handle the encoding.
+(defn push-codepoint [chars cp]
+  (Array.push-back chars (Char.from-int cp)))
+
+; A regular `"..."` string. We parse manually because escapes are
+; byte-level and the escape vocabulary is rich.
+(defn string-p []
+  (Parser.init (fn [src len cur]
+    (let [start @(Cursor.pos cur)]
+      (if (or (Int.>= start len)
+              (not (Char.= (String.char-at src start) \")))
+        (Reply.ErrEmpty (ParseErr.expected-at cur @"string"))
+        (let-do [c (Cursor.advance cur \")
+                 chars []
+                 going true
+                 err false]
+          (while-do (and going (not err))
+            (if (Int.>= @(Cursor.pos &c) len)
+              (set! err true)
+              (let [ch (String.char-at src @(Cursor.pos &c))]
+                (cond
+                  (Char.= ch \")
+                    (do (set! c (Cursor.advance &c ch))
+                        (set! going false))
+                  (Char.= ch \\)
+                    (if (Int.>= (Int.+ @(Cursor.pos &c) 1) len)
+                      (set! err true)
+                      (let [esc (String.char-at src (Int.+ @(Cursor.pos &c) 1))]
+                        (cond
+                          (Char.= esc \n)
+                            (do (set! chars (Array.push-back chars \newline))
+                                (set! c (Cursor.advance-by &c 2 false)))
+                          (Char.= esc \t)
+                            (do (set! chars (Array.push-back chars \tab))
+                                (set! c (Cursor.advance-by &c 2 false)))
+                          (Char.= esc \r)
+                            (do (set! chars (Array.push-back chars \return))
+                                (set! c (Cursor.advance-by &c 2 false)))
+                          (Char.= esc \b)
+                            (do (set! chars (Array.push-back chars \backspace))
+                                (set! c (Cursor.advance-by &c 2 false)))
+                          (Char.= esc \f)
+                            (do (set! chars (Array.push-back chars \formfeed))
+                                (set! c (Cursor.advance-by &c 2 false)))
+                          (Char.= esc \v)
+                            (do (set! chars (Array.push-back chars (Char.from-int 11)))
+                                (set! c (Cursor.advance-by &c 2 false)))
+                          (Char.= esc \a)
+                            (do (set! chars (Array.push-back chars (Char.from-int 7)))
+                                (set! c (Cursor.advance-by &c 2 false)))
+                          (or (Char.= esc \\) (or (Char.= esc \") (Char.= esc \')))
+                            (do (set! chars (Array.push-back chars esc))
+                                (set! c (Cursor.advance-by &c 2 false)))
+                          (Char.= esc \x)
+                            (let-do [digits-start (Int.+ @(Cursor.pos &c) 2)
+                                     end digits-start]
+                              (while-do (and (Int.< end len)
+                                             (hex-digit? (String.char-at src end)))
+                                (set! end (Int.inc end)))
+                              (if (Int.> end digits-start)
+                                (do
+                                  (set! chars (Array.push-back chars
+                                                (Char.from-int (read-hex src digits-start
+                                                                  (Int.- end digits-start)))))
+                                  (set! c (Cursor.advance-by &c (Int.- end @(Cursor.pos &c)) false)))
+                                (set! err true)))
+                          (Char.= esc \u)
+                            (if (Int.>= (Int.+ @(Cursor.pos &c) 6) (Int.inc len))
+                              (set! err true)
+                              (do
+                                (set! chars (push-codepoint chars
+                                              (read-hex src
+                                                (Int.+ @(Cursor.pos &c) 2) 4)))
+                                (set! c (Cursor.advance-by &c 6 false))))
+                          (Char.= esc \U)
+                            (if (Int.>= (Int.+ @(Cursor.pos &c) 10) (Int.inc len))
+                              (set! err true)
+                              (do
+                                (set! chars (push-codepoint chars
+                                              (read-hex src
+                                                (Int.+ @(Cursor.pos &c) 2) 8)))
+                                (set! c (Cursor.advance-by &c 10 false))))
+                          (do (set! chars (Array.push-back chars \\))
+                              (set! chars (Array.push-back chars esc))
+                              (set! c (Cursor.advance-by &c 2 false))))))
+                  (do (set! chars (Array.push-back chars ch))
+                      (set! c (Cursor.advance &c ch)))))))
+          (if err
+            (Reply.ErrConsumed (ParseErr.expected-at &c @"closing quote"))
+            (Reply.OkConsumed (Carp.Str (String.from-chars &chars)) c))))))))
+
+; A raw string `r"..."`. Backslashes are literal; `""` inside encodes
+; a single `"`.
+(defn raw-string-p []
+  (Parser.init (fn [src len cur]
+    (let [start @(Cursor.pos cur)]
+      (if (or (Int.>= (Int.+ start 1) len)
+              (or (not (Char.= (String.char-at src start) \r))
+                  (not (Char.= (String.char-at src (Int.+ start 1)) \"))))
+        (Reply.ErrEmpty (ParseErr.expected-at cur @"raw string"))
+        (let-do [c (Cursor.advance-by cur 2 false)
+                 chars []
+                 going true
+                 err false]
+          (while-do (and going (not err))
+            (if (Int.>= @(Cursor.pos &c) len)
+              (set! err true)
+              (let [ch (String.char-at src @(Cursor.pos &c))]
+                (cond
+                  (Char.= ch \")
+                    (if (and (Int.< (Int.inc @(Cursor.pos &c)) len)
+                             (Char.= (String.char-at src (Int.inc @(Cursor.pos &c))) \"))
+                      (do (set! chars (Array.push-back chars \"))
+                          (set! c (Cursor.advance-by &c 2 false)))
+                      (do (set! c (Cursor.advance &c ch))
+                          (set! going false)))
+                  (do (set! chars (Array.push-back chars ch))
+                      (set! c (Cursor.advance &c ch)))))))
+          (if err
+            (Reply.ErrConsumed (ParseErr.expected-at &c @"closing quote"))
+            (Reply.OkConsumed (Carp.Str (String.from-chars &chars)) c))))))))
+
+; A pattern string `#"..."`. Bytes copied verbatim until matching `"`,
+; with backslashes preserved as-is.
+(defn pattern-p []
+  (Parser.init (fn [src len cur]
+    (let [start @(Cursor.pos cur)]
+      (if (or (Int.>= (Int.+ start 1) len)
+              (or (not (Char.= (String.char-at src start) \#))
+                  (not (Char.= (String.char-at src (Int.+ start 1)) \"))))
+        (Reply.ErrEmpty (ParseErr.expected-at cur @"pattern"))
+        (let-do [c (Cursor.advance-by cur 2 false)
+                 chars []
+                 going true
+                 err false]
+          (while-do (and going (not err))
+            (if (Int.>= @(Cursor.pos &c) len)
+              (set! err true)
+              (let [ch (String.char-at src @(Cursor.pos &c))]
+                (cond
+                  (Char.= ch \")
+                    (do (set! c (Cursor.advance &c ch))
+                        (set! going false))
+                  (do (set! chars (Array.push-back chars ch))
+                      (set! c (Cursor.advance &c ch)))))))
+          (if err
+            (Reply.ErrConsumed (ParseErr.expected-at &c @"closing quote"))
+            (Reply.OkConsumed (Carp.Pat (String.from-chars &chars)) c))))))))
+
+; ----------------------------------------------------------------
+; Chars
+; ----------------------------------------------------------------
+
+(defn named-char [name]
+  (cond
+    (= &name "space")     (Maybe.Just \space)
+    (= &name "tab")       (Maybe.Just \tab)
+    (= &name "newline")   (Maybe.Just \newline)
+    (= &name "return")    (Maybe.Just \return)
+    (= &name "backspace") (Maybe.Just \backspace)
+    (= &name "formfeed")  (Maybe.Just \formfeed)
+    (= &name "\"")        (Maybe.Just \")
+    (Maybe.Nothing)))
+
+(defn unicode-char-p []
+  (Parser.bind (Parser.byte \u)
+    (fn [_]
+      (Parser.bind (Parser.slice-of
+                     (Parser.count 4
+                       (Parser.satisfy (fn [c] (hex-digit? c)) @"hex digit")))
+        (fn [hex]
+          (Parser.pure (Carp.Chr (Char.from-int (read-hex &hex 0 4)))))))))
+
+(defn char-p []
+  (Parser.bind (Parser.byte \\)
+    (fn [_]
+      (Parser.choice
+        [(Parser.try (unicode-char-p))
+         (Parser.bind (Parser.take-while1 (fn [c] (sym-byte? c)))
+           (fn [name]
+             (if (= 1 (String.length &name))
+               (Parser.pure (Carp.Chr (String.char-at &name 0)))
+               (match (named-char @&name)
+                 (Maybe.Just c)  (Parser.pure (Carp.Chr c))
+                 (Maybe.Nothing) (Parser.fail @"named char")))))
+         ; Fallback: any single byte (covers `\"`, `\\`, etc.).
+         (Parser.map (Parser.any-byte) (fn [c] (Carp.Chr c)))]))))
+
+; ----------------------------------------------------------------
+; Symbols (with module path)
+; ----------------------------------------------------------------
+
+(defn segment-p []
+  (Parser.take-while1 (fn [c] (sym-byte? c))))
+
+(defn symbol-p []
+  (Parser.map
+    (Parser.label @"symbol"
+      (Parser.seq (segment-p)
+                  (Parser.many
+                    (Parser.bind (Parser.byte \.) (fn [_] (segment-p))))))
+    (fn [outer]
+      (let [first @(Pair.a &outer)
+            rest  @(Pair.b &outer)]
+        (let-do [segs [first]]
+          (for [i 0 (Array.length &rest)]
+            (set! segs (Array.push-back segs @(Array.unsafe-nth &rest i))))
+          (if (Int.= 1 (Array.length &segs))
+            (let [only (Array.unsafe-nth &segs 0)]
+              (cond
+                (= only "true")  (Carp.Bol true)
+                (= only "false") (Carp.Bol false)
+                (Carp.Sym segs)))
+            (Carp.Sym segs)))))))
+
+; ----------------------------------------------------------------
+; Compound forms — recursion goes through `*carp*`.
+; ----------------------------------------------------------------
+
+(def *carp* (the (Parser Carp) (Parser.placeholder)))
+
+(defn many-forms []
+  (Parser.bind (skip-ws)
+    (fn [_]
+      (Parser.many
+        (Parser.map
+          (Parser.bind (Parser.recurse &*carp*)
+            (fn [c] (Parser.map (skip-ws) (fn [_] @&c))))
+          (fn [c] (Box.init c)))))))
+
+(defn list-p []
+  (Parser.map
+    (Parser.between (Parser.byte \()
+                    (Parser.byte \))
+                    (many-forms))
+    (fn [items] (Carp.Lst items))))
+
+(defn array-p []
+  (Parser.map
+    (Parser.between (Parser.byte \[)
+                    (Parser.byte \])
+                    (many-forms))
+    (fn [items] (Carp.Arr items))))
+
+(defn static-array-p []
+  (Parser.map
+    (Parser.between (Parser.string @"$[")
+                    (Parser.byte \])
+                    (many-forms))
+    (fn [items] (Carp.StaticArr items))))
+
+(defn dict-p []
+  (Parser.map
+    (Parser.between (Parser.byte \{)
+                    (Parser.byte \})
+                    (many-forms))
+    (fn [items] (Carp.Dict items))))
+
+; ----------------------------------------------------------------
+; Reader macros — sugar that lowers to `(<name> form)` lists.
+; Longest-prefix forms (`%@`) come before their shorter cousins.
+; ----------------------------------------------------------------
+
+(defn macro-list [name body]
+  (Carp.Lst [(Box.init (Carp.Sym [@name])) (Box.init body)]))
+
+(defn reader-macro-p [open name]
+  (Parser.map
+    (Parser.bind (Parser.string open)
+      (fn [_] (Parser.recurse &*carp*)))
+    (fn [body] (macro-list &name body))))
+
+(defn ref-p []              (reader-macro-p @"&" @"ref"))
+(defn deref-p []            (reader-macro-p @"~" @"deref"))
+(defn copy-p []             (reader-macro-p @"@" @"copy"))
+(defn quote-p []            (reader-macro-p @"'" @"quote"))
+(defn quasiquote-p []       (reader-macro-p @"`" @"quasiquote"))
+(defn unquote-splicing-p [] (reader-macro-p @"%@" @"unquote-splicing"))
+(defn unquote-p []          (reader-macro-p @"%" @"unquote"))
+
+; ----------------------------------------------------------------
+; The recursive entry point.
+; ----------------------------------------------------------------
+
+(defn carp-form-p []
+  (Parser.choice
+    [; reader macros (longest first)
+     (Parser.try (unquote-splicing-p))
+     (Parser.try (unquote-p))
+     (Parser.try (ref-p))
+     (Parser.try (deref-p))
+     (Parser.try (copy-p))
+     (Parser.try (quote-p))
+     (Parser.try (quasiquote-p))
+     ; compound
+     (Parser.try (static-array-p))
+     (list-p)
+     (array-p)
+     (dict-p)
+     ; atoms
+     (Parser.try (number-p))
+     (Parser.try (raw-string-p))
+     (Parser.try (pattern-p))
+     (string-p)
+     (char-p)
+     (symbol-p)]))
+
+(def -init-grammar (do (set! *carp* (carp-form-p)) 0))
+
+; Top-level: leading whitespace, then a single form, then trailing
+; whitespace (so `Parser.parse` is satisfied with the whole input).
+(defn top-p []
+  (Parser.bind (skip-ws)
+    (fn [_]
+      (Parser.bind (Parser.recurse &*carp*)
+        (fn [c]
+          (Parser.map (skip-ws) (fn [_] @&c)))))))
+
+; ----------------------------------------------------------------
+; Demo
+; ----------------------------------------------------------------
+
+(defn demo [src]
+  (do
+    (IO.print "in : ")
+    (IO.println src)
+    (IO.print "out: ")
+    (match (Parser.parse (top-p) src)
+      (Result.Success c) (IO.println &(Carp.str &c))
+      (Result.Error e)   (IO.println &(Parser.format-error &e)))
+    (IO.println "")))
+
+(defn main []
+  (do
+    ; numbers — every type
+    (demo "42")
+    (demo "0xff")
+    (demo "0b1010")
+    (demo "-7l")
+    (demo "255b")
+    (demo "3.14")
+    (demo "1.0f")
+    (demo "2f")
+    ; strings
+    (demo "\"hello, world\"")
+    (demo "\"tabs\\tand\\nnewlines\"")
+    (demo "\"unicode: \\u00e9\"")
+    (demo "r\"raw \"\"quoted\"\" text\"")
+    (demo "#\"^[a-z]+$\"")
+    ; chars
+    (demo "\\a")
+    (demo "\\space")
+    (demo "\\newline")
+    (demo "\\u00e9")
+    ; symbols + bools + paths
+    (demo "foo")
+    (demo "Foo.Bar.baz")
+    (demo "+")
+    (demo "<=")
+    (demo "true")
+    (demo "false")
+    ; compound
+    (demo "(defn greet [name] (println &name))")
+    (demo "[1 2 3]")
+    (demo "$[0 0 0 0]")
+    (demo "{:a 1 :b 2}")
+    ; reader macros
+    (demo "'sym")
+    (demo "`(a %x %@xs)")
+    (demo "&(ref something)")
+    (demo "~deref")
+    (demo "@owned")
+    ; comments + commas as whitespace
+    (demo "(a, b, c)")
+    (demo "; doc comment\n42")))
