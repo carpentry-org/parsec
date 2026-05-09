@@ -71,7 +71,9 @@
                     Parser.Lexer
                 </h1>
                 <div class="module-description">
-                    
+                    <p>is a submodule of common-token parsers: whitespace
+handling, integers, identifiers, and literal symbols.</p>
+
                 </div>
                 <div class="binder">
                     <a class="anchor" href="#identifier">
@@ -89,9 +91,9 @@
                         (identifier)
                     </pre>
                     <p class="doc">
-                        <p>parses a C-style identifier: a letter or underscore,
-followed by zero or more letters, digits, or underscores. Returns the
-matched text as a String.</p>
+                        <p>parses a C-style identifier: a letter or
+underscore, followed by zero or more letters, digits, or underscores.
+Returns the matched text as a <code>String</code>.</p>
 
                     </p>
                 </div>
@@ -111,8 +113,8 @@ matched text as a String.</p>
                         (integer)
                     </pre>
                     <p class="doc">
-                        <p>parses an optional <code>-</code> sign followed by decimal digits as
-an Int. Fused into a single closure.</p>
+                        <p>parses an optional <code>-</code> sign followed by decimal
+digits as an <code>Int</code>. Fused into a single closure.</p>
 
                     </p>
                 </div>
@@ -132,7 +134,7 @@ an Int. Fused into a single closure.</p>
                         (lexeme p)
                     </pre>
                     <p class="doc">
-                        <p>runs p, then skips trailing whitespace. Returns p's value.</p>
+                        <p>runs <code>p</code>, then skips trailing whitespace. Returns <code>p</code>'s value.</p>
 
                     </p>
                 </div>
@@ -152,7 +154,7 @@ an Int. Fused into a single closure.</p>
                         (symbol s)
                     </pre>
                     <p class="doc">
-                        <p>matches the literal string s, then skips trailing whitespace.</p>
+                        <p>matches the literal string <code>s</code>, then skips trailing whitespace.</p>
 
                     </p>
                 </div>
@@ -172,8 +174,9 @@ an Int. Fused into a single closure.</p>
                         (unsigned-int)
                     </pre>
                     <p class="doc">
-                        <p>parses one or more decimal digits as an Int. Fused
-into a single closure for performance — does not go through bind/map.</p>
+                        <p>parses one or more decimal digits as an
+<code>Int</code>. Fused into a single closure for performance — does not go
+through <code>bind</code>/<code>map</code>.</p>
 
                     </p>
                 </div>

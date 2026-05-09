@@ -71,7 +71,11 @@
                     ParseErr
                 </h1>
                 <div class="module-description">
-                    
+                    <p>is a parser failure carrying byte/line/column position,
+an optional <code>unexpected</code> token, and an <code>expected</code> set of labels
+gathered from parsers that failed at that position. Render with
+<code>Parser.format-error</code>.</p>
+
                 </div>
                 <div class="binder">
                     <a class="anchor" href="#col">
@@ -149,7 +153,7 @@
                         (empty-at cur)
                     </pre>
                     <p class="doc">
-                        <p>creates a ParseErr at cur with no labels.</p>
+                        <p>creates a <code>ParseErr</code> at <code>cur</code> with no labels.</p>
 
                     </p>
                 </div>
@@ -189,7 +193,7 @@
                         (expected-at cur lbl)
                     </pre>
                     <p class="doc">
-                        <p>creates a ParseErr at cur with one expected label.</p>
+                        <p>creates a <code>ParseErr</code> at <code>cur</code> with one expected label.</p>
 
                     </p>
                 </div>

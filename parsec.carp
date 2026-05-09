@@ -17,19 +17,19 @@
     (Result.Error e)   (IO.errorln &(Parser.format-error &e))))
 ```")
 
-; ============================================================
-; Cursor
-; ============================================================
-
+(doc Cursor "is a cursor over the parser input: `pos` (byte offset),
+`line`, and `col`. Newline-aware: `\\n` advances `line` and resets
+`col` to 1. Users mostly see `Cursor` values via `ParseErr` for error
+reporting.")
 (deftype Cursor [pos Int line Int col Int])
 (derive Cursor =)
 
 (defmodule Cursor
-  (doc zero "the initial cursor: pos=0, line=1, col=1.")
+  (doc zero "is the initial cursor: `pos=0`, `line=1`, `col=1`.")
   (defn zero [] (Cursor.init 0 1 1))
 
   (doc advance "advances the cursor past one byte. If the byte is a
-newline, the line counter increments and col resets to 1.")
+newline, `line` increments and `col` resets to 1.")
   (defn advance [cur b]
     (if (Char.= b \newline)
       (Cursor.init (Int.inc @(Cursor.pos cur))
@@ -41,8 +41,8 @@ newline, the line counter increments and col resets to 1.")
 
   (hidden advance-by)
   (doc advance-by "advances the cursor past `n` bytes, treating the
-whole span as one column. If `newline?` is true, line is bumped instead.
-Used by UTF-8 codepoint parsers.")
+whole span as one column. If `newline?` is true, `line` is bumped
+instead. Used by UTF-8 codepoint parsers.")
   (defn advance-by [cur n newline?]
     (if newline?
       (Cursor.init (Int.+ @(Cursor.pos cur) n)
@@ -53,10 +53,10 @@ Used by UTF-8 codepoint parsers.")
                    (Int.inc @(Cursor.col cur)))))
 )
 
-; ============================================================
-; ParseErr
-; ============================================================
-
+(doc ParseErr "is a parser failure carrying byte/line/column position,
+an optional `unexpected` token, and an `expected` set of labels
+gathered from parsers that failed at that position. Render with
+`Parser.format-error`.")
 (deftype ParseErr
   [pos        Int
    line       Int
@@ -65,19 +65,19 @@ Used by UTF-8 codepoint parsers.")
    expected   (Array String)])
 
 (defmodule ParseErr
-  (doc empty-at "creates a ParseErr at cur with no labels.")
+  (doc empty-at "creates a `ParseErr` at `cur` with no labels.")
   (defn empty-at [cur]
     (ParseErr.init @(Cursor.pos cur) @(Cursor.line cur) @(Cursor.col cur)
                    (Maybe.Nothing) []))
 
-  (doc expected-at "creates a ParseErr at cur with one expected label.")
+  (doc expected-at "creates a `ParseErr` at `cur` with one expected label.")
   (defn expected-at [cur lbl]
     (ParseErr.init @(Cursor.pos cur) @(Cursor.line cur) @(Cursor.col cur)
                    (Maybe.Nothing) [lbl]))
 
   (hidden merge)
-  (doc merge "merges two ParseErrs by unioning their expected sets.
-Position is taken from b.")
+  (doc merge "merges two `ParseErr`s by unioning their expected
+sets. Position is taken from `b`.")
   (defn merge [a b]
     (let [exp (Array.concat &[@(ParseErr.expected &a)
                               @(ParseErr.expected &b)])
@@ -91,28 +91,21 @@ Position is taken from b.")
                      exp)))
 )
 
-; ============================================================
-; Reply — 4-case Parsec-style
-; ============================================================
-
+(doc Reply "is the 4-case result of running a parser: `OkConsumed`,
+`OkEmpty`, `ErrConsumed`, `ErrEmpty`. The consumed/empty distinction
+drives Parsec-style backtracking. `Parser.parse` collapses this into
+a `Result`; `Reply` surfaces only when writing custom combinators
+that call `Parser.run` directly.")
 (deftype (Reply a)
   (OkConsumed  [a Cursor])
   (OkEmpty     [a Cursor])
   (ErrConsumed [ParseErr])
   (ErrEmpty    [ParseErr]))
 
-; ============================================================
-; Parser
-; ============================================================
-
 (deftype (Parser a)
   [run (Fn [(Ref String) Int (Ref Cursor)] (Reply a))])
 
 (defmodule Parser
-
-  ; ----------------------------------------
-  ; Primitives
-  ; ----------------------------------------
 
   (doc pure "succeeds without consuming, producing the given value.")
   (defn pure [x]
@@ -123,7 +116,7 @@ Position is taken from b.")
     (Parser.init (fn [src len cur]
       (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl)))))
 
-  (doc satisfy "consumes one byte if pred holds, otherwise fails empty.")
+  (doc satisfy "consumes one byte if `pred` holds, otherwise fails empty.")
   (defn satisfy [pred lbl]
     (Parser.init (fn [src len cur]
       (let [pos @(Cursor.pos cur)]
@@ -134,8 +127,8 @@ Position is taken from b.")
               (Reply.OkConsumed c (Cursor.advance cur c))
               (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl)))))))))
 
-  (doc byte "consumes a specific byte (as Char). Fails empty if the
-input doesn't match or is at EOF.")
+  (doc byte "consumes a specific byte (as `Char`). Fails empty if
+the input doesn't match or is at EOF.")
   (defn byte [b]
     (Parser.init (fn [src len cur]
       (let [pos @(Cursor.pos cur)]
@@ -162,11 +155,7 @@ input doesn't match or is at EOF.")
         (Reply.OkEmpty () @cur)
         (Reply.ErrEmpty (ParseErr.expected-at cur @"end of input"))))))
 
-  ; ----------------------------------------
-  ; Combinators
-  ; ----------------------------------------
-
-  (doc map "applies f to the value produced by p.")
+  (doc map "applies `f` to the value produced by `p`.")
   (defn map [p f]
     (Parser.init (fn [src len cur]
       (match (~(Parser.run &p) src len cur)
@@ -175,8 +164,8 @@ input doesn't match or is at EOF.")
         (Reply.ErrConsumed e)  (Reply.ErrConsumed e)
         (Reply.ErrEmpty e)     (Reply.ErrEmpty e)))))
 
-  (doc seq "runs p then q, returning a Pair of their values. Failure
-of either propagates with appropriate consumption tracking.")
+  (doc seq "runs `p` then `q`, returning a `Pair` of their values.
+Failure of either propagates with appropriate consumption tracking.")
   (defn seq [p q]
     (Parser.init (fn [src len cur]
       (match (~(Parser.run &p) src len cur)
@@ -195,8 +184,9 @@ of either propagates with appropriate consumption tracking.")
             (Reply.ErrConsumed e)    (Reply.ErrConsumed e)
             (Reply.ErrEmpty e)       (Reply.ErrEmpty e))))))
 
-  (doc bind "monadic bind. Runs p, then runs (f v) where v is p's value.
-The continuation parser is computed from the value.")
+  (doc bind "is the monadic bind. Runs `p`, then runs `(f v)` where
+`v` is `p`'s value. The continuation parser is computed from the
+value.")
   (defn bind [p f]
     (Parser.init (fn [src len cur]
       (match (~(Parser.run &p) src len cur)
@@ -217,8 +207,9 @@ The continuation parser is computed from the value.")
               (Reply.ErrConsumed e)    (Reply.ErrConsumed e)
               (Reply.ErrEmpty e)       (Reply.ErrEmpty e)))))))
 
-  (doc alt "if p fails without consuming, runs q from the same cursor.
-If p consumes anything, no backtrack — wrap p in `try` to allow backtracking.")
+  (doc alt "if `p` fails without consuming, runs `q` from the same
+cursor. If `p` consumes anything, no backtrack — wrap `p` in `try`
+to allow backtracking.")
   (defn alt [p q]
     (Parser.init (fn [src len cur]
       (match (~(Parser.run &p) src len cur)
@@ -232,8 +223,8 @@ If p consumes anything, no backtrack — wrap p in `try` to allow backtracking."
             (Reply.ErrConsumed e)  (Reply.ErrConsumed e)
             (Reply.ErrEmpty e2)    (Reply.ErrEmpty (ParseErr.merge e1 e2)))))))
 
-  (doc try "if p fails after consuming, restore the cursor and report
-the failure as empty so `alt` can backtrack.")
+  (doc try "if `p` fails after consuming, restores the cursor and
+reports the failure as empty so `alt` can backtrack.")
   (defn try [p]
     (Parser.init (fn [src len cur]
       (match (~(Parser.run &p) src len cur)
@@ -287,14 +278,14 @@ The grammar must be initialized via `set!` before parsing.")
     (Parser.init (fn [src len cur]
       (~(Parser.run pref) src len cur))))
 
-  (doc placeholder "an uninitialized parser that always fails. Use as
-the initial value for a top-level `def` that will be `set!` to the real
-parser before parsing. Companion to `recurse`.")
+  (doc placeholder "is an uninitialized parser that always fails.
+Use as the initial value for a top-level `def` that will be `set!` to
+the real parser before parsing. Companion to `recurse`.")
   (defn placeholder []
     (fail @"uninitialized parser"))
 
-  (doc label "replaces the expected-set on empty failure with [name].
-Has no effect on consumed failures or successes.")
+  (doc label "replaces the expected-set on empty failure with
+`name`. Has no effect on consumed failures or successes.")
   (defn label [name p]
     (Parser.init (fn [src len cur]
       (match (~(Parser.run &p) src len cur)
@@ -308,8 +299,9 @@ Has no effect on consumed failures or successes.")
                                          @(ParseErr.unexpected &e)
                                          [@&name]))))))
 
-  (doc string "matches the literal string s byte-for-byte. Atomic:
-on partial mismatch, fails empty (no consumed failure mid-string).")
+  (doc string "matches the literal string `s` byte-for-byte.
+Atomic: on partial mismatch, fails empty (no consumed failure
+mid-string).")
   (defn string [s]
     (Parser.init (fn [src len cur]
       (let [slen (String.length &s)
@@ -330,8 +322,9 @@ on partial mismatch, fails empty (no consumed failure mid-string).")
                   (Reply.OkEmpty @&s c)))
               (Reply.ErrEmpty (ParseErr.expected-at cur (fmt "\"%s\"" &s))))))))))
 
-  (doc optional "if p succeeds, wraps the value in Just; if p fails empty,
-succeeds with Nothing without consuming. Consumed failures propagate.")
+  (doc optional "if `p` succeeds, wraps the value in `Just`; if `p`
+fails empty, succeeds with `Nothing` without consuming. Consumed
+failures propagate.")
   (defn optional [p]
     (Parser.init (fn [src len cur]
       (match (~(Parser.run &p) src len cur)
@@ -340,8 +333,8 @@ succeeds with Nothing without consuming. Consumed failures propagate.")
         (Reply.ErrConsumed e)  (Reply.ErrConsumed e)
         (Reply.ErrEmpty e)     (Reply.OkEmpty (Maybe.Nothing) @cur)))))
 
-  (doc lookahead "runs p, then restores the cursor. p's value is kept,
-but no input is consumed. p's failures propagate as-is.")
+  (doc lookahead "runs `p`, then restores the cursor. `p`'s value
+is kept, but no input is consumed. `p`'s failures propagate as-is.")
   (defn lookahead [p]
     (Parser.init (fn [src len cur]
       (match (~(Parser.run &p) src len cur)
@@ -350,8 +343,8 @@ but no input is consumed. p's failures propagate as-is.")
         (Reply.ErrConsumed e)  (Reply.ErrConsumed e)
         (Reply.ErrEmpty e)     (Reply.ErrEmpty e)))))
 
-  (doc not-followed-by "succeeds (without consuming) if p fails; fails
-if p succeeds. Useful for negative assertions.")
+  (doc not-followed-by "succeeds (without consuming) if `p` fails;
+fails if `p` succeeds. Useful for negative assertions.")
   (defn not-followed-by [p]
     (Parser.init (fn [src len cur]
       (match (~(Parser.run &p) src len cur)
@@ -360,8 +353,9 @@ if p succeeds. Useful for negative assertions.")
         (Reply.ErrConsumed _)  (Reply.OkEmpty () @cur)
         (Reply.ErrEmpty _)     (Reply.OkEmpty () @cur)))))
 
-  (doc count "runs p exactly n times, collecting results into an Array.
-If any iteration fails, propagates with appropriate consumption.")
+  (doc count "runs `p` exactly `n` times, collecting results into
+an `Array`. If any iteration fails, propagates with appropriate
+consumption.")
   (defn count [n p]
     (Parser.init (fn [src len cur]
       (let-do [acc []
@@ -392,9 +386,10 @@ If any iteration fails, propagates with appropriate consumption.")
           (Maybe.Nothing)
             (if consumed-any (Reply.OkConsumed acc c) (Reply.OkEmpty acc c)))))))
 
-  (doc many "runs p zero or more times, collecting results. Stops on
-empty failure of p. If p succeeds without consuming, the loop stops to
-avoid infinite recursion (do not use `many` with an empty-success parser).")
+  (doc many "runs `p` zero or more times, collecting results. Stops
+on empty failure of `p`. If `p` succeeds without consuming, the loop
+stops to avoid infinite recursion (do not use `many` with an
+empty-success parser).")
   (defn many [p]
     (Parser.init (fn [src len cur]
       (let-do [acc []
@@ -420,8 +415,9 @@ avoid infinite recursion (do not use `many` with an empty-success parser).")
               (Reply.OkConsumed acc c)
               (Reply.OkEmpty acc c)))))))
 
-  (doc many1 "runs p one or more times. Fails (with same consumption
-as p's first failure) if p doesn't match at least once.")
+  (doc many1 "runs `p` one or more times. Fails (with same
+consumption as `p`'s first failure) if `p` doesn't match at least
+once.")
   (defn many1 [p]
     (Parser.init (fn [src len cur]
       (match (~(Parser.run &p) src len cur)
@@ -447,8 +443,9 @@ as p's first failure) if p doesn't match at least once.")
               (Maybe.Nothing) (Reply.OkConsumed acc c)))
         (Reply.OkEmpty v1 c1) (Reply.OkEmpty [v1] c1)))))
 
-  (doc between "runs open, then p, then close, returning p's value.
-Once open consumes, all subsequent failures are consumed failures.")
+  (doc between "runs `open`, then `p`, then `close`, returning
+`p`'s value. Once `open` consumes, all subsequent failures are
+consumed failures.")
   (defn between [open close p]
     (Parser.init (fn [src len cur]
       (match (~(Parser.run &open) src len cur)
@@ -526,8 +523,9 @@ Once open consumes, all subsequent failures are consumed failures.")
             (Reply.OkConsumed values c)
             (Reply.OkEmpty values c)))))
 
-  (doc sep-by1 "one or more p separated by sep. Trailing sep is not
-allowed (sep must be followed by another p). Returns Array of p values.")
+  (doc sep-by1 "one or more `p` separated by `sep`. Trailing `sep`
+is not allowed (`sep` must be followed by another `p`). Returns an
+`Array` of `p` values.")
   (defn sep-by1 [p sep]
     (Parser.init (fn [src len cur]
       (match (~(Parser.run &p) src len cur)
@@ -536,7 +534,8 @@ allowed (sep must be followed by another p). Returns Array of p values.")
         (Reply.OkConsumed v1 c1) (sep-by1-loop &p &sep src len c1 [v1] true)
         (Reply.OkEmpty v1 c1)    (sep-by1-loop &p &sep src len c1 [v1] false)))))
 
-  (doc sep-by "zero or more p separated by sep. Returns Array (possibly empty).")
+  (doc sep-by "zero or more `p` separated by `sep`. Returns an
+`Array` (possibly empty).")
   (defn sep-by [p sep]
     (Parser.init (fn [src len cur]
       (match (~(Parser.run &p) src len cur)
@@ -545,9 +544,10 @@ allowed (sep must be followed by another p). Returns Array of p values.")
         (Reply.OkConsumed v1 c1) (sep-by1-loop &p &sep src len c1 [v1] true)
         (Reply.OkEmpty v1 c1)    (sep-by1-loop &p &sep src len c1 [v1] false)))))
 
-  (doc choice "tries each parser in turn; returns the first success.
-If all parsers fail empty, the resulting failure merges their expected sets.
-A consumed failure of any parser short-circuits (use try inside if needed).")
+  (doc choice "tries each parser in turn; returns the first
+success. If all parsers fail empty, the resulting failure merges
+their expected sets. A consumed failure of any parser short-circuits
+(use `try` inside if needed).")
   (defn choice [ps]
     (Parser.init (fn [src len cur]
       (let-do [n (Array.length &ps)
@@ -577,8 +577,9 @@ A consumed failure of any parser short-circuits (use try inside if needed).")
           (Reply.ErrEmpty merged-err)
           result)))))
 
-  (doc slice-of "runs p; on success, replaces p's value with the slice
-of input that p consumed (as a String). On failure, propagates as-is.")
+  (doc slice-of "runs `p`; on success, replaces `p`'s value with
+the slice of input that `p` consumed (as a `String`). On failure,
+propagates as-is.")
   (defn slice-of [p]
     (Parser.init (fn [src len cur]
       (let [start @(Cursor.pos cur)]
@@ -590,8 +591,8 @@ of input that p consumed (as a String). On failure, propagates as-is.")
           (Reply.ErrConsumed e) (Reply.ErrConsumed e)
           (Reply.ErrEmpty e)    (Reply.ErrEmpty e))))))
 
-  (doc take "consumes exactly n bytes, returning them as a String.
-Fails empty if fewer than n bytes remain.")
+  (doc take "consumes exactly `n` bytes, returning them as a
+`String`. Fails empty if fewer than `n` bytes remain.")
   (defn take [n]
     (Parser.init (fn [src len cur]
       (let [start @(Cursor.pos cur)]
@@ -604,8 +605,9 @@ Fails empty if fewer than n bytes remain.")
               (Reply.OkConsumed (String.byte-slice src start (Int.+ start n)) c)
               (Reply.OkEmpty (String.byte-slice src start (Int.+ start n)) c))))))))
 
-  (doc take-while "consumes bytes while pred holds. Always succeeds
-(possibly with empty result). Returns the consumed slice as a String.")
+  (doc take-while "consumes bytes while `pred` holds. Always
+succeeds (possibly with empty result). Returns the consumed slice as
+a `String`.")
   (defn take-while [pred]
     (Parser.init (fn [src len cur]
       (let-do [start @(Cursor.pos cur)
@@ -621,7 +623,7 @@ Fails empty if fewer than n bytes remain.")
             (Reply.OkConsumed (String.byte-slice src start end) c)
             (Reply.OkEmpty (String.byte-slice src start end) c)))))))
 
-  (doc take-while1 "like take-while, but requires at least one byte to match.")
+  (doc take-while1 "like `take-while`, but requires at least one byte to match.")
   (defn take-while1 [pred]
     (Parser.init (fn [src len cur]
       (let-do [start @(Cursor.pos cur)
@@ -637,16 +639,15 @@ Fails empty if fewer than n bytes remain.")
             (Reply.OkConsumed (String.byte-slice src start end) c)
             (Reply.ErrEmpty (ParseErr.expected-at cur @"at least one matching byte"))))))))
 
-  ; ----------------------------------------
-  ; UTF-8 layer
-  ; ----------------------------------------
-
+  (doc UTF8 "is a submodule of codepoint-level parsers layered on the
+byte-level core. Each codepoint advances the cursor by one column,
+regardless of byte width.")
   (defmodule UTF8
     (private decode)
     (hidden decode)
     (doc decode "decodes one UTF-8 codepoint at byte position `pos` in
-`src`. Returns `(Maybe (Pair Char Int))` where the Int is the byte width
-(1-4) of the codepoint, or Nothing on EOF or malformed input.")
+`src`. Returns `(Maybe (Pair Char Int))` where the `Int` is the byte
+width (1-4) of the codepoint, or `Nothing` on EOF or malformed input.")
     (private byte-at)
     (hidden byte-at)
     (defn byte-at [src pos]
@@ -696,8 +697,8 @@ Fails empty if fewer than n bytes remain.")
                   (Maybe.Just (Pair.init (Char.from-int cp) 4))))
             (Maybe.Nothing)))))
 
-    (doc any-char "consumes one UTF-8 codepoint, returning it as Char.
-Fails empty at end of input or on malformed UTF-8.")
+    (doc any-char "consumes one UTF-8 codepoint, returning it as a
+`Char`. Fails empty at end of input or on malformed UTF-8.")
     (defn any-char []
       (Parser.init (fn [src len cur]
         (let [pos @(Cursor.pos cur)]
@@ -740,10 +741,8 @@ Fails empty otherwise (or at EOF / on malformed input).")
                   (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl)))))))))
   )
 
-  ; ----------------------------------------
-  ; Lexer — common token parsers
-  ; ----------------------------------------
-
+  (doc Lexer "is a submodule of common-token parsers: whitespace
+handling, integers, identifiers, and literal symbols.")
   (defmodule Lexer
     (private digit?)
     (hidden digit?)
@@ -761,9 +760,9 @@ Fails empty otherwise (or at EOF / on malformed input).")
 
     (private scan-digits)
     (hidden scan-digits)
-    (doc scan-digits "advances through ASCII digits starting at start-c.
-Returns the cursor after the last digit (which equals start-c if there
-were none).")
+    (doc scan-digits "advances through ASCII digits starting at
+`start-c`. Returns the cursor after the last digit (which equals
+`start-c` if there were none).")
     (defn scan-digits [src len start-c]
       (let-do [c @start-c]
         (while-do (and (Int.< @(Cursor.pos &c) len)
@@ -784,7 +783,7 @@ tab, CR, LF). Always succeeds; the result is unit.")
       (Parser.map (Parser.take-while (fn [c] (space? c)))
                   (fn [_] ())))
 
-    (doc lexeme "runs p, then skips trailing whitespace. Returns p's value.")
+    (doc lexeme "runs `p`, then skips trailing whitespace. Returns `p`'s value.")
     (defn lexeme [p]
       (let [ws (whitespace)]
         (Parser.init (fn [src len cur]
@@ -804,11 +803,12 @@ tab, CR, LF). Always succeeds; the result is unit.")
                 (Reply.ErrConsumed e)   (Reply.ErrConsumed e)
                 (Reply.ErrEmpty _)      (Reply.OkEmpty v c1)))))))
 
-    (doc symbol "matches the literal string s, then skips trailing whitespace.")
+    (doc symbol "matches the literal string `s`, then skips trailing whitespace.")
     (defn symbol [s] (lexeme (Parser.string s)))
 
-    (doc unsigned-int "parses one or more decimal digits as an Int. Fused
-into a single closure for performance — does not go through bind/map.")
+    (doc unsigned-int "parses one or more decimal digits as an
+`Int`. Fused into a single closure for performance — does not go
+through `bind`/`map`.")
     (defn unsigned-int []
       (Parser.init (fn [src len cur]
         (let [start @(Cursor.pos cur)
@@ -821,8 +821,8 @@ into a single closure for performance — does not go through bind/map.")
               (Reply.OkConsumed n c))
             (Reply.ErrEmpty (ParseErr.expected-at cur @"integer")))))))
 
-    (doc integer "parses an optional `-` sign followed by decimal digits as
-an Int. Fused into a single closure.")
+    (doc integer "parses an optional `-` sign followed by decimal
+digits as an `Int`. Fused into a single closure.")
     (defn integer []
       (Parser.init (fn [src len cur]
         (let-do [c @cur
@@ -844,9 +844,9 @@ an Int. Fused into a single closure.")
                 (Reply.ErrConsumed (ParseErr.expected-at &c2 @"integer"))
                 (Reply.ErrEmpty    (ParseErr.expected-at cur  @"integer")))))))))
 
-    (doc identifier "parses a C-style identifier: a letter or underscore,
-followed by zero or more letters, digits, or underscores. Returns the
-matched text as a String.")
+    (doc identifier "parses a C-style identifier: a letter or
+underscore, followed by zero or more letters, digits, or underscores.
+Returns the matched text as a `String`.")
     (defn identifier []
       (Parser.slice-of
         (Parser.seq
@@ -855,13 +855,9 @@ matched text as a String.")
           (Parser.take-while (fn [c] (or (alnum? c) (Char.= c \_)))))))
   )
 
-  ; ----------------------------------------
-  ; Error formatting
-  ; ----------------------------------------
-
-  (doc format-error "renders a ParseErr as a human-readable String.
-Format: `parse error at LINE:COL: unexpected X; expected: Y, Z, W`.
-Uses StringBuf internally.")
+  (doc format-error "renders a `ParseErr` as a human-readable
+`String`. Format: `parse error at LINE:COL: unexpected X; expected: Y, Z, W`.
+Uses `StringBuf` internally.")
   (defn format-error [e]
     (let-do [sb (StringBuf.create)]
       (StringBuf.append-str &sb "parse error at ")
@@ -885,12 +881,8 @@ Uses StringBuf internally.")
       (let [s (StringBuf.to-string &sb)]
         (do (StringBuf.delete sb) s))))
 
-  ; ----------------------------------------
-  ; Entry
-  ; ----------------------------------------
-
-  (doc parse "runs p over the entire input. Strict: fails if p doesn't
-consume all of src. Returns (Result a ParseErr).")
+  (doc parse "runs `p` over the entire input. Strict: fails if `p`
+doesn't consume all of `src`. Returns `(Result a ParseErr)`.")
   (defn parse [p src]
     (let [len (String.length src)
           cur (Cursor.zero)]

@@ -71,7 +71,10 @@
                     Parser.UTF8
                 </h1>
                 <div class="module-description">
-                    
+                    <p>is a submodule of codepoint-level parsers layered on the
+byte-level core. Each codepoint advances the cursor by one column,
+regardless of byte width.</p>
+
                 </div>
                 <div class="binder">
                     <a class="anchor" href="#any-char">
@@ -89,8 +92,8 @@
                         (any-char)
                     </pre>
                     <p class="doc">
-                        <p>consumes one UTF-8 codepoint, returning it as Char.
-Fails empty at end of input or on malformed UTF-8.</p>
+                        <p>consumes one UTF-8 codepoint, returning it as a
+<code>Char</code>. Fails empty at end of input or on malformed UTF-8.</p>
 
                     </p>
                 </div>

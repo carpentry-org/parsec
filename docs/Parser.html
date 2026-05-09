@@ -101,7 +101,9 @@
                         
                     </span>
                     <p class="doc">
-                        
+                        <p>is a submodule of common-token parsers: whitespace
+handling, integers, identifiers, and literal symbols.</p>
+
                     </p>
                 </div>
                 <div class="binder">
@@ -122,7 +124,10 @@
                         
                     </span>
                     <p class="doc">
-                        
+                        <p>is a submodule of codepoint-level parsers layered on the
+byte-level core. Each codepoint advances the cursor by one column,
+regardless of byte width.</p>
+
                     </p>
                 </div>
                 <div class="binder">
@@ -141,8 +146,9 @@
                         (alt p q)
                     </pre>
                     <p class="doc">
-                        <p>if p fails without consuming, runs q from the same cursor.
-If p consumes anything, no backtrack — wrap p in <code>try</code> to allow backtracking.</p>
+                        <p>if <code>p</code> fails without consuming, runs <code>q</code> from the same
+cursor. If <code>p</code> consumes anything, no backtrack — wrap <code>p</code> in <code>try</code>
+to allow backtracking.</p>
 
                     </p>
                 </div>
@@ -182,8 +188,9 @@ If p consumes anything, no backtrack — wrap p in <code>try</code> to allow bac
                         (between open close p)
                     </pre>
                     <p class="doc">
-                        <p>runs open, then p, then close, returning p's value.
-Once open consumes, all subsequent failures are consumed failures.</p>
+                        <p>runs <code>open</code>, then <code>p</code>, then <code>close</code>, returning
+<code>p</code>'s value. Once <code>open</code> consumes, all subsequent failures are
+consumed failures.</p>
 
                     </p>
                 </div>
@@ -203,8 +210,9 @@ Once open consumes, all subsequent failures are consumed failures.</p>
                         (bind p f)
                     </pre>
                     <p class="doc">
-                        <p>monadic bind. Runs p, then runs (f v) where v is p's value.
-The continuation parser is computed from the value.</p>
+                        <p>is the monadic bind. Runs <code>p</code>, then runs <code>(f v)</code> where
+<code>v</code> is <code>p</code>'s value. The continuation parser is computed from the
+value.</p>
 
                     </p>
                 </div>
@@ -224,8 +232,8 @@ The continuation parser is computed from the value.</p>
                         (byte b)
                     </pre>
                     <p class="doc">
-                        <p>consumes a specific byte (as Char). Fails empty if the
-input doesn't match or is at EOF.</p>
+                        <p>consumes a specific byte (as <code>Char</code>). Fails empty if
+the input doesn't match or is at EOF.</p>
 
                     </p>
                 </div>
@@ -245,9 +253,10 @@ input doesn't match or is at EOF.</p>
                         (choice ps)
                     </pre>
                     <p class="doc">
-                        <p>tries each parser in turn; returns the first success.
-If all parsers fail empty, the resulting failure merges their expected sets.
-A consumed failure of any parser short-circuits (use try inside if needed).</p>
+                        <p>tries each parser in turn; returns the first
+success. If all parsers fail empty, the resulting failure merges
+their expected sets. A consumed failure of any parser short-circuits
+(use <code>try</code> inside if needed).</p>
 
                     </p>
                 </div>
@@ -287,8 +296,9 @@ A consumed failure of any parser short-circuits (use try inside if needed).</p>
                         (count n p)
                     </pre>
                     <p class="doc">
-                        <p>runs p exactly n times, collecting results into an Array.
-If any iteration fails, propagates with appropriate consumption.</p>
+                        <p>runs <code>p</code> exactly <code>n</code> times, collecting results into
+an <code>Array</code>. If any iteration fails, propagates with appropriate
+consumption.</p>
 
                     </p>
                 </div>
@@ -368,9 +378,9 @@ If any iteration fails, propagates with appropriate consumption.</p>
                         (format-error e)
                     </pre>
                     <p class="doc">
-                        <p>renders a ParseErr as a human-readable String.
-Format: <code>parse error at LINE:COL: unexpected X; expected: Y, Z, W</code>.
-Uses StringBuf internally.</p>
+                        <p>renders a <code>ParseErr</code> as a human-readable
+<code>String</code>. Format: <code>parse error at LINE:COL: unexpected X; expected: Y, Z, W</code>.
+Uses <code>StringBuf</code> internally.</p>
 
                     </p>
                 </div>
@@ -410,8 +420,8 @@ Uses StringBuf internally.</p>
                         (label name p)
                     </pre>
                     <p class="doc">
-                        <p>replaces the expected-set on empty failure with [name].
-Has no effect on consumed failures or successes.</p>
+                        <p>replaces the expected-set on empty failure with
+<code>name</code>. Has no effect on consumed failures or successes.</p>
 
                     </p>
                 </div>
@@ -463,8 +473,8 @@ lazy thunk in one calling the other.</p>
                         (lookahead p)
                     </pre>
                     <p class="doc">
-                        <p>runs p, then restores the cursor. p's value is kept,
-but no input is consumed. p's failures propagate as-is.</p>
+                        <p>runs <code>p</code>, then restores the cursor. <code>p</code>'s value
+is kept, but no input is consumed. <code>p</code>'s failures propagate as-is.</p>
 
                     </p>
                 </div>
@@ -484,9 +494,10 @@ but no input is consumed. p's failures propagate as-is.</p>
                         (many p)
                     </pre>
                     <p class="doc">
-                        <p>runs p zero or more times, collecting results. Stops on
-empty failure of p. If p succeeds without consuming, the loop stops to
-avoid infinite recursion (do not use <code>many</code> with an empty-success parser).</p>
+                        <p>runs <code>p</code> zero or more times, collecting results. Stops
+on empty failure of <code>p</code>. If <code>p</code> succeeds without consuming, the loop
+stops to avoid infinite recursion (do not use <code>many</code> with an
+empty-success parser).</p>
 
                     </p>
                 </div>
@@ -506,8 +517,9 @@ avoid infinite recursion (do not use <code>many</code> with an empty-success par
                         (many1 p)
                     </pre>
                     <p class="doc">
-                        <p>runs p one or more times. Fails (with same consumption
-as p's first failure) if p doesn't match at least once.</p>
+                        <p>runs <code>p</code> one or more times. Fails (with same
+consumption as <code>p</code>'s first failure) if <code>p</code> doesn't match at least
+once.</p>
 
                     </p>
                 </div>
@@ -527,7 +539,7 @@ as p's first failure) if p doesn't match at least once.</p>
                         (map p f)
                     </pre>
                     <p class="doc">
-                        <p>applies f to the value produced by p.</p>
+                        <p>applies <code>f</code> to the value produced by <code>p</code>.</p>
 
                     </p>
                 </div>
@@ -547,8 +559,8 @@ as p's first failure) if p doesn't match at least once.</p>
                         (not-followed-by p)
                     </pre>
                     <p class="doc">
-                        <p>succeeds (without consuming) if p fails; fails
-if p succeeds. Useful for negative assertions.</p>
+                        <p>succeeds (without consuming) if <code>p</code> fails;
+fails if <code>p</code> succeeds. Useful for negative assertions.</p>
 
                     </p>
                 </div>
@@ -568,8 +580,9 @@ if p succeeds. Useful for negative assertions.</p>
                         (optional p)
                     </pre>
                     <p class="doc">
-                        <p>if p succeeds, wraps the value in Just; if p fails empty,
-succeeds with Nothing without consuming. Consumed failures propagate.</p>
+                        <p>if <code>p</code> succeeds, wraps the value in <code>Just</code>; if <code>p</code>
+fails empty, succeeds with <code>Nothing</code> without consuming. Consumed
+failures propagate.</p>
 
                     </p>
                 </div>
@@ -589,8 +602,8 @@ succeeds with Nothing without consuming. Consumed failures propagate.</p>
                         (parse p src)
                     </pre>
                     <p class="doc">
-                        <p>runs p over the entire input. Strict: fails if p doesn't
-consume all of src. Returns (Result a ParseErr).</p>
+                        <p>runs <code>p</code> over the entire input. Strict: fails if <code>p</code>
+doesn't consume all of <code>src</code>. Returns <code>(Result a ParseErr)</code>.</p>
 
                     </p>
                 </div>
@@ -610,9 +623,9 @@ consume all of src. Returns (Result a ParseErr).</p>
                         (placeholder)
                     </pre>
                     <p class="doc">
-                        <p>an uninitialized parser that always fails. Use as
-the initial value for a top-level <code>def</code> that will be <code>set!</code> to the real
-parser before parsing. Companion to <code>recurse</code>.</p>
+                        <p>is an uninitialized parser that always fails.
+Use as the initial value for a top-level <code>def</code> that will be <code>set!</code> to
+the real parser before parsing. Companion to <code>recurse</code>.</p>
 
                     </p>
                 </div>
@@ -726,7 +739,7 @@ once at startup, and reference it from sub-parsers via <code>recurse</code>.</p>
                         (satisfy pred lbl)
                     </pre>
                     <p class="doc">
-                        <p>consumes one byte if pred holds, otherwise fails empty.</p>
+                        <p>consumes one byte if <code>pred</code> holds, otherwise fails empty.</p>
 
                     </p>
                 </div>
@@ -746,7 +759,8 @@ once at startup, and reference it from sub-parsers via <code>recurse</code>.</p>
                         (sep-by p sep)
                     </pre>
                     <p class="doc">
-                        <p>zero or more p separated by sep. Returns Array (possibly empty).</p>
+                        <p>zero or more <code>p</code> separated by <code>sep</code>. Returns an
+<code>Array</code> (possibly empty).</p>
 
                     </p>
                 </div>
@@ -766,8 +780,9 @@ once at startup, and reference it from sub-parsers via <code>recurse</code>.</p>
                         (sep-by1 p sep)
                     </pre>
                     <p class="doc">
-                        <p>one or more p separated by sep. Trailing sep is not
-allowed (sep must be followed by another p). Returns Array of p values.</p>
+                        <p>one or more <code>p</code> separated by <code>sep</code>. Trailing <code>sep</code>
+is not allowed (<code>sep</code> must be followed by another <code>p</code>). Returns an
+<code>Array</code> of <code>p</code> values.</p>
 
                     </p>
                 </div>
@@ -787,8 +802,8 @@ allowed (sep must be followed by another p). Returns Array of p values.</p>
                         (seq p q)
                     </pre>
                     <p class="doc">
-                        <p>runs p then q, returning a Pair of their values. Failure
-of either propagates with appropriate consumption tracking.</p>
+                        <p>runs <code>p</code> then <code>q</code>, returning a <code>Pair</code> of their values.
+Failure of either propagates with appropriate consumption tracking.</p>
 
                     </p>
                 </div>
@@ -848,8 +863,9 @@ of either propagates with appropriate consumption tracking.</p>
                         (slice-of p)
                     </pre>
                     <p class="doc">
-                        <p>runs p; on success, replaces p's value with the slice
-of input that p consumed (as a String). On failure, propagates as-is.</p>
+                        <p>runs <code>p</code>; on success, replaces <code>p</code>'s value with
+the slice of input that <code>p</code> consumed (as a <code>String</code>). On failure,
+propagates as-is.</p>
 
                     </p>
                 </div>
@@ -889,8 +905,9 @@ of input that p consumed (as a String). On failure, propagates as-is.</p>
                         (string s)
                     </pre>
                     <p class="doc">
-                        <p>matches the literal string s byte-for-byte. Atomic:
-on partial mismatch, fails empty (no consumed failure mid-string).</p>
+                        <p>matches the literal string <code>s</code> byte-for-byte.
+Atomic: on partial mismatch, fails empty (no consumed failure
+mid-string).</p>
 
                     </p>
                 </div>
@@ -910,8 +927,8 @@ on partial mismatch, fails empty (no consumed failure mid-string).</p>
                         (take n)
                     </pre>
                     <p class="doc">
-                        <p>consumes exactly n bytes, returning them as a String.
-Fails empty if fewer than n bytes remain.</p>
+                        <p>consumes exactly <code>n</code> bytes, returning them as a
+<code>String</code>. Fails empty if fewer than <code>n</code> bytes remain.</p>
 
                     </p>
                 </div>
@@ -931,8 +948,9 @@ Fails empty if fewer than n bytes remain.</p>
                         (take-while pred)
                     </pre>
                     <p class="doc">
-                        <p>consumes bytes while pred holds. Always succeeds
-(possibly with empty result). Returns the consumed slice as a String.</p>
+                        <p>consumes bytes while <code>pred</code> holds. Always
+succeeds (possibly with empty result). Returns the consumed slice as
+a <code>String</code>.</p>
 
                     </p>
                 </div>
@@ -952,7 +970,7 @@ Fails empty if fewer than n bytes remain.</p>
                         (take-while1 pred)
                     </pre>
                     <p class="doc">
-                        <p>like take-while, but requires at least one byte to match.</p>
+                        <p>like <code>take-while</code>, but requires at least one byte to match.</p>
 
                     </p>
                 </div>
@@ -972,8 +990,8 @@ Fails empty if fewer than n bytes remain.</p>
                         (try p)
                     </pre>
                     <p class="doc">
-                        <p>if p fails after consuming, restore the cursor and report
-the failure as empty so <code>alt</code> can backtrack.</p>
+                        <p>if <code>p</code> fails after consuming, restores the cursor and
+reports the failure as empty so <code>alt</code> can backtrack.</p>
 
                     </p>
                 </div>

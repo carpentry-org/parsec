@@ -71,7 +71,11 @@
                     Cursor
                 </h1>
                 <div class="module-description">
-                    
+                    <p>is a cursor over the parser input: <code>pos</code> (byte offset),
+<code>line</code>, and <code>col</code>. Newline-aware: <code>\n</code> advances <code>line</code> and resets
+<code>col</code> to 1. Users mostly see <code>Cursor</code> values via <code>ParseErr</code> for error
+reporting.</p>
+
                 </div>
                 <div class="binder">
                     <a class="anchor" href="#=">
@@ -109,7 +113,7 @@
                     </pre>
                     <p class="doc">
                         <p>advances the cursor past one byte. If the byte is a
-newline, the line counter increments and col resets to 1.</p>
+newline, <code>line</code> increments and <code>col</code> resets to 1.</p>
 
                     </p>
                 </div>
@@ -469,7 +473,7 @@ newline, the line counter increments and col resets to 1.</p>
                         (zero)
                     </pre>
                     <p class="doc">
-                        <p>the initial cursor: pos=0, line=1, col=1.</p>
+                        <p>is the initial cursor: <code>pos=0</code>, <code>line=1</code>, <code>col=1</code>.</p>
 
                     </p>
                 </div>

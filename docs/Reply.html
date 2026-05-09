@@ -71,7 +71,12 @@
                     Reply
                 </h1>
                 <div class="module-description">
-                    
+                    <p>is the 4-case result of running a parser: <code>OkConsumed</code>,
+<code>OkEmpty</code>, <code>ErrConsumed</code>, <code>ErrEmpty</code>. The consumed/empty distinction
+drives Parsec-style backtracking. <code>Parser.parse</code> collapses this into
+a <code>Result</code>; <code>Reply</code> surfaces only when writing custom combinators
+that call <code>Parser.run</code> directly.</p>
+
                 </div>
                 <div class="binder">
                     <a class="anchor" href="#ErrConsumed">
