@@ -1,0 +1,311 @@
+(doc Tutorial "in which we will build an arithmetic expression parser step by
+step. We will cover every combinator most grammars need.
+
+By the end of this tutorial you'll have a parser that takes strings
+like `2 * (3 + 4) - 5` and returns `9`.
+
+The complete file is `examples/arith.carp`. We build it in five steps,
+each runnable on its own.
+
+## 0. setup
+
+```clojure
+(load \"git@github.com:carpentry-org/parsec@0.1.0\")
+```
+
+`Parser.parse` is strict, it succeeds only if the parser consumes the
+whole input. We'll use that throughout.
+
+## 1. parse a single integer
+
+The simplest grammar is just a number. The library ships with
+`Parser.Lexer.integer`, which handles an optional sign and skips no
+trailing whitespace.
+
+```clojure
+(defn main []
+  (match (Parser.parse (Parser.Lexer.integer) \"42\")
+    (Result.Success n) (println* &n)
+    (Result.Error e)   (IO.errorln &(Parser.format-error &e))))
+```
+
+When you run it you should see `42`. Try `-7`, `12345`. Try `forty-two` to
+see the error.
+
+## 2. handle whitespace
+
+Real input has spaces. `Parser.Lexer.lexeme` runs a parser, then skips
+trailing whitespace. So `(Parser.Lexer.lexeme (Parser.Lexer.integer))`
+matches an integer followed by any whitespace.
+
+We also want leading whitespace to be tolerated. The cleanest way is
+to wrap the top-level parser:
+
+```clojure
+(defn arith []
+  (Parser.bind (Parser.Lexer.whitespace)
+               (fn [_] (Parser.Lexer.lexeme (Parser.Lexer.integer)))))
+```
+
+`Parser.bind` runs the first parser, then feeds the result into a
+function that returns the next parser. We discard the whitespace's
+result and yield the integer. This is the monadic chaining you'd write
+as `whitespace >> integer` in Haskell, in case you already know Parsec.
+
+## 3. multiplication
+
+We want `2 * 3` to evaluate to `6`. The grammar is:
+
+```
+term = integer ('*' integer | '/' integer)*
+```
+
+This translates to “an integer, then zero or more `(operator, integer)` pairs,
+fold the pairs over the first integer”.
+
+```clojure
+(defn apply-op [acc op rhs]
+  (cond
+    (Char.= op \\*) (Int.* acc rhs)
+    (Char.= op \\/) (Int./ acc rhs)
+    acc))
+
+(defn mul-op []
+  (Parser.alt
+    (Parser.map (Parser.Lexer.symbol @\"*\") (fn [_] \\*))
+    (Parser.map (Parser.Lexer.symbol @\"/\") (fn [_] \\/))))
+```
+
+`Parser.alt` tries the first parser. If it fails *without consuming*,
+it tries the second. `Parser.Lexer.symbol` matches a literal string
+and skips trailing whitespace.
+
+`(Parser.map f p)` runs p and applies f to its result. Here we throw
+away the matched `\"*\"` and produce the Char `\\*`.
+
+The chaining looks like this:
+
+```clojure
+(defn term []
+  (Parser.map
+    (Parser.seq
+      (Parser.Lexer.lexeme (Parser.Lexer.integer))
+      (Parser.many (Parser.seq (mul-op)
+                               (Parser.Lexer.lexeme (Parser.Lexer.integer)))))
+    (fn [outer]
+      (let [first @(Pair.a &outer)
+            pairs (Pair.b &outer)]
+        (Array.reduce &(fn [acc p] (apply-op acc @(Pair.a p) @(Pair.b p)))
+                      first
+                      pairs)))))
+```
+
+If you test it, you should get:
+
+```
+\"2 * 3\"      => 6
+\"2 * 3 * 4\"  => 24
+\"100 / 10\"   => 10
+```
+
+## 4. addition with precedence
+
+For `1 + 2 * 3` to evaluate to `7` (not `9`), addition has to be
+*lower* precedence than multiplication. The standard trick is that an
+expression is a sum of terms, where each term is a product of factors.
+
+```
+expr = term ('+' term | '-' term)*
+term = factor ('*' factor | '/' factor)*
+```
+
+Notice the `chainl1` shape repeats. Let's factor it out:
+
+```clojure
+(defn chainl1 [head op next]
+  (Parser.map
+    (Parser.seq head (Parser.many (Parser.seq op next)))
+    (fn [outer]
+      (let [h @(Pair.a &outer)
+            pairs (Pair.b &outer)]
+        (Array.reduce &(fn [acc p]
+                         (apply-op acc @(Pair.a p) @(Pair.b p)))
+                      h
+                      pairs)))))
+```
+
+Now `term` and `expr` are one-liners:
+
+```clojure
+(defn term [] (chainl1 (factor) (mul-op) (factor)))
+(defn expr [] (chainl1 (term)   (add-op) (term)))
+```
+
+Here, `add-op` is just `mul-op` with `\\+` and `\\-`.
+
+## 5. parens, and the recursion problem
+
+The remaining piece is `factor`:
+
+```
+factor = integer | '(' expr ')'
+```
+
+A factor is either a literal integer or a parenthesized expression.
+The recursion path is `factor -> expr -> term -> factor`.
+
+In Carp, this is a problem. If we try the obvious thing:
+
+```clojure
+(defn factor []
+  (Parser.alt
+    (Parser.Lexer.lexeme (Parser.Lexer.integer))
+    (Parser.between (Parser.Lexer.symbol @\"(\")
+                    (Parser.Lexer.symbol @\")\")
+                    (expr))))   ; recurse into expr
+```
+
+we hang at construction. `(factor)` calls `(expr)` calls `(term)`
+calls `(factor)` calls `(expr)`... Carp evaluates eagerly, so we
+construct an infinite loop when building the parser tree.
+
+The fix: `Parser.recurse` runs a parser via a stable static reference.
+We declare the recursive position in a top-level `def`, fill it in
+once at startup, and reference it from sub-parsers.
+
+```clojure
+(def *expr* (the (Parser Int) (Parser.placeholder)))
+
+(defn factor []
+  (Parser.alt
+    (Parser.Lexer.lexeme (Parser.Lexer.integer))
+    (Parser.Lexer.lexeme
+      (Parser.between (Parser.Lexer.symbol @\"(\")
+                      (Parser.Lexer.symbol @\")\")
+                      (Parser.recurse &*expr*)))))
+
+(defn term [] (chainl1 (factor) (mul-op) (factor)))
+
+(defn expr-impl []
+  (chainl1 (term) (add-op) (term)))
+
+; Init *expr* at module load.
+(def _init (do (set! *expr* (expr-impl)) 0))
+```
+
+`Parser.placeholder` is a parser that always fails (until you `set!`
+the cell). The `_init` def has a side-effecting initializer that runs
+once.
+
+Now `(arith)` parses anything — primitives, parens, mixed precedence:
+
+```
+\"1 + 2\"             => 3
+\"1 + 2 * 3\"         => 7
+\"(1 + 2) * 3\"       => 9
+\"10 - 4 - 3\"        => 3   (left-associative)
+\"2 * (3 + 4) - 5\"   => 9
+```
+
+## What you've used
+
+By the end of this tutorial you've touched all the combinators that
+most real grammars need:
+
+- **Primitives** — `byte`, `Lexer.integer`, `Lexer.symbol`,
+  `Lexer.lexeme`, `Lexer.whitespace`
+- **Chaining** — `bind`, `seq`, `map`
+- **Choice** — `alt`
+- **Repetition** — `many`
+- **Bracketing** — `between`
+- **Recursion** — `recurse` against a `placeholder`-initialized cell
+
+Look at `examples/arith.carp` for the assembled file, and at
+`examples/lisp.carp` for the same recursion pattern applied to
+s-expressions with a `Box`-recursive AST.
+
+## What's next
+
+- Rich error messages: `Parser.label \"<name>\" p` replaces the
+  expected-set on failure. `Parser.format-error` renders a `ParseErr`
+  to a string.
+- Backtracking nuances: `Parser.try` lets you backtrack after a
+  partially-consumed alternative. `Parser.string` is atomic by default
+  and doesn't need `try`.
+- [Pitfalls](./Pitfalls.html) covers the linear-types interactions you'll
+  eventually run into.
+")
+(defmodule Tutorial)
+
+(doc Pitfalls "in which I discuss some dioms and gotchas you'll likely hit
+while building a grammar.
+
+## Prefer `recurse` over `lazy` for recursive grammars
+
+`Parser.lazy` defers parser construction until run time, so it can
+close over self-references. The cost is that every invocation rebuilds
+the parser sub-tree, so for input of depth N, that's N allocations per
+parse.
+
+`Parser.recurse` runs a parser through a stable cell and does not
+rebuild. Declare the recursive position in a top-level `def`, set it
+once, reference it from sub-parsers. See `examples/lisp.carp` for the
+pattern. Use `lazy` only when the grammar is shallow or short-lived or
+performance is less important than clarity.
+
+## A `lazy` thunk must call a *sibling*, not itself
+
+```clojure
+(defn parens []
+  (Parser.between '(' ')'
+    (Parser.optional (Parser.lazy (fn [] (parens))))))
+```
+
+This loops at parse time. The self-call inside the thunk does not
+terminate. Split the recursive position into two functions:
+
+```clojure
+(defn parens-content []
+  (Parser.alt (Parser.lazy (fn [] (parens-pair)))
+              (Parser.pure ())))
+
+(defn parens-pair []
+  (Parser.between '(' ')' (parens-content)))
+```
+
+`recurse` against a stable cell sidesteps this entirely.
+
+## Use `String.byte-slice`, not `String.slice`
+
+In a custom combinator that extracts a substring, use
+`String.byte-slice`. The library does internally. `String.slice` walks
+the input twice (`chars` then `from-chars`), `byte-slice` is a direct
+memcpy. The cost difference is two orders of magnitude.
+
+The tradeoff here is UTF-8.
+
+## Pass `(fn ...)` to combinators by value, not by reference
+
+Combinators like `Parser.map`, `Parser.bind`, `Parser.satisfy`, and
+`Parser.take-while` take their function arguments by value:
+
+```clojure
+(Parser.map (Parser.byte \\a) (fn [c] (Char.to-int c)))    ; right
+(Parser.map (Parser.byte \\a) &(fn [c] (Char.to-int c)))   ; wrong
+```
+
+The `&fn` form compiles for capture-free closures (Carp hoists those
+to static functions) but produces a dangling reference once the
+closure captures a local. The failure mode is a runtime segfault, not
+a compile error.
+
+This should be resolved in Carp eventually, but until then I want to
+tag it.
+
+## `Parser.parse` is strict
+
+`Parser.parse p input` succeeds only if `p` consumes all of `input`.
+There is no partial-parse entry point. If you want to ignore trailing
+input, append a permissive `take-while` to your grammar, or trim the
+input before parsing.")
+(defmodule Pitfalls)

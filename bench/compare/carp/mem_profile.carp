@@ -1,0 +1,98 @@
+; Memory-pressure driver: runs each grammar 10000 times so /usr/bin/time
+; can capture peak RSS and the user/sys time can be normalized against
+; iteration count.
+
+(load "../../../parsec.carp")
+(Project.no-echo)
+
+(def *kv1000*  @"")
+(def *ints1k*  @"")
+(def *deep100* @"")
+(def *flat1k*  @"")
+
+(defn build-kv [n]
+  (let-do [parts (the (Array String) [])]
+    (for [i 0 n] (Array.push-back! &parts (fmt "k%d=%d" i i)))
+    (String.join "; " &parts)))
+
+(defn build-int-list [n]
+  (let-do [parts (the (Array String) [])]
+    (for [i 0 n] (Array.push-back! &parts (Int.str i)))
+    (String.join "," &parts)))
+
+(defn build-rep [n s]
+  (let-do [parts (the (Array String) [])]
+    (for [i 0 n] (Array.push-back! &parts @s))
+    (String.concat &parts)))
+
+(defn build-deep-sexp [n]
+  (let-do [opens  (build-rep n "(")
+           closes (build-rep n ")")]
+    (String.append &(String.append &opens "x") &closes)))
+
+(defn build-flat-sexp [n]
+  (let-do [parts (the (Array String) [])]
+    (for [i 0 n] (Array.push-back! &parts @"x"))
+    (fmt "(%s)" &(String.join " " &parts))))
+
+(defn make-kv-pair []
+  (Parser.bind (Parser.Lexer.lexeme (Parser.Lexer.identifier))
+    (fn [name]
+      (Parser.bind (Parser.Lexer.symbol @"=")
+        (fn [_]
+          (Parser.map (Parser.Lexer.integer)
+                      (fn [n] (Pair.init @&name n))))))))
+
+(def p-kv (Parser.sep-by1 (make-kv-pair) (Parser.Lexer.symbol @";")))
+(def p-int-list (Parser.sep-by (Parser.Lexer.integer) (Parser.byte \,)))
+
+(deftype SExp
+  (Sym [String])
+  (Lst [(Array (Box SExp))]))
+
+(def *sexp* (the (Parser SExp) (Parser.placeholder)))
+
+(defn sym-char? [c]
+  (not (or (Char.= c \space)
+           (or (Char.= c \tab)
+               (or (Char.= c \newline)
+                   (or (Char.= c \()
+                       (Char.= c \))))))))
+
+(defn sym-p []
+  (Parser.map (Parser.Lexer.lexeme
+                (Parser.take-while1 (fn [c] (sym-char? c))))
+              (fn [s] (SExp.Sym s))))
+
+(defn list-p []
+  (Parser.map
+    (Parser.Lexer.lexeme
+      (Parser.between (Parser.byte \()
+                      (Parser.byte \))
+                      (Parser.many (Parser.map (Parser.recurse &*sexp*)
+                                               (fn [s] (Box.init s))))))
+    (fn [items] (SExp.Lst items))))
+
+(def -init-sexp (do (set! *sexp* (Parser.alt (sym-p) (list-p))) 0))
+
+(def p-sexp (Parser.bind (Parser.Lexer.whitespace)
+                         (fn [_] (Parser.recurse &*sexp*))))
+
+(defn run! [p src]
+  (let [len (String.length src)
+        cur (Cursor.zero)]
+    (ignore (~(Parser.run p) src len &cur))))
+
+(defn main []
+  (do
+    (set! *kv1000*  (build-kv 1000))
+    (set! *ints1k*  (build-int-list 1000))
+    (set! *deep100* (build-deep-sexp 100))
+    (set! *flat1k*  (build-flat-sexp 1000))
+    ; 10_000 iterations of each — long enough that startup/teardown
+    ; doesn't dominate.
+    (for [i 0 10000] (run! &p-kv       &*kv1000*))
+    (for [i 0 10000] (run! &p-int-list &*ints1k*))
+    (for [i 0 10000] (run! &p-sexp     &*deep100*))
+    (for [i 0 10000] (run! &p-sexp     &*flat1k*))
+    (IO.println "done")))

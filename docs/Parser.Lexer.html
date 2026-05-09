@@ -1,0 +1,204 @@
+<!DOCTYPE HTML>
+
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+        <link rel="stylesheet" href="../style.css">
+    </head>
+    <body>
+        <div class="content">
+            <div class="logo">
+                <a href="https://github.com/carpentry-org/parsec">
+                    <img src="">
+                </a>
+                <div class="title">
+                    parsec
+                </div>
+                <div class="index">
+                    <ul>
+                        <li>
+                            <details>
+                                <summary>
+                                    <a href="Parser.html">
+                                        Parser
+                                    </a>
+                                </summary>
+                                <ul>
+                                    <li>
+                                        <a href="Parser.Lexer.html">
+                                            Lexer
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="Parser.UTF8.html">
+                                            UTF8
+                                        </a>
+                                    </li>
+                                </ul>
+                            </details>
+                        </li>
+                        <li>
+                            <a href="Cursor.html">
+                                Cursor
+                            </a>
+                        </li>
+                        <li>
+                            <a href="ParseErr.html">
+                                ParseErr
+                            </a>
+                        </li>
+                        <li>
+                            <a href="Reply.html">
+                                Reply
+                            </a>
+                        </li>
+                        <li>
+                            <a href="Tutorial.html">
+                                Tutorial
+                            </a>
+                        </li>
+                        <li>
+                            <a href="Pitfalls.html">
+                                Pitfalls
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            <div class="module">
+                <h1>
+                    Parser.Lexer
+                </h1>
+                <div class="module-description">
+                    
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#identifier">
+                        <h3 id="identifier">
+                            identifier
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [] (Parser String))
+                    </p>
+                    <pre class="args">
+                        (identifier)
+                    </pre>
+                    <p class="doc">
+                        <p>parses a C-style identifier: a letter or underscore,
+followed by zero or more letters, digits, or underscores. Returns the
+matched text as a String.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#integer">
+                        <h3 id="integer">
+                            integer
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [] (Parser Int))
+                    </p>
+                    <pre class="args">
+                        (integer)
+                    </pre>
+                    <p class="doc">
+                        <p>parses an optional <code>-</code> sign followed by decimal digits as
+an Int. Fused into a single closure.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#lexeme">
+                        <h3 id="lexeme">
+                            lexeme
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Parser a)] (Parser a))
+                    </p>
+                    <pre class="args">
+                        (lexeme p)
+                    </pre>
+                    <p class="doc">
+                        <p>runs p, then skips trailing whitespace. Returns p's value.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#symbol">
+                        <h3 id="symbol">
+                            symbol
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [String] (Parser String))
+                    </p>
+                    <pre class="args">
+                        (symbol s)
+                    </pre>
+                    <p class="doc">
+                        <p>matches the literal string s, then skips trailing whitespace.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#unsigned-int">
+                        <h3 id="unsigned-int">
+                            unsigned-int
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [] (Parser Int))
+                    </p>
+                    <pre class="args">
+                        (unsigned-int)
+                    </pre>
+                    <p class="doc">
+                        <p>parses one or more decimal digits as an Int. Fused
+into a single closure for performance — does not go through bind/map.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#whitespace">
+                        <h3 id="whitespace">
+                            whitespace
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [] (Parser ()))
+                    </p>
+                    <pre class="args">
+                        (whitespace)
+                    </pre>
+                    <p class="doc">
+                        <p>consumes zero or more ASCII whitespace bytes (space,
+tab, CR, LF). Always succeeds; the result is unit.</p>
+
+                    </p>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>

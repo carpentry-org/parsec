@@ -1,0 +1,727 @@
+(load "../parsec.carp")
+(load "Test.carp")
+(use Test)
+
+(defn ok? [r]
+  (match-ref r
+    (Result.Success _) true
+    (Result.Error _)   false))
+
+(defn err? [r]
+  (match-ref r
+    (Result.Success _) false
+    (Result.Error _)   true))
+
+; Recursive grammar for the lazy combinator test. The lazy thunk must call
+; a sibling function, not the immediately enclosing one — so we split into
+; `parens-pair` and `parens-content`.
+;   parens-pair    = '(' parens-content ')'
+;   parens-content = parens-pair | empty
+(sig parens-pair (Fn [] (Parser ())))
+(sig parens-content (Fn [] (Parser ())))
+
+(defn parens-pair []
+  (Parser.between (Parser.byte \() (Parser.byte \))
+                  (parens-content)))
+
+(defn parens-content []
+  (Parser.alt (Parser.lazy (fn [] (parens-pair)))
+              (Parser.pure ())))
+
+; Recursive grammar for the recurse combinator test. Same shape as the
+; lazy test but uses a stable cell instead of rebuilding per call.
+(def *r-pair* (the (Parser ()) (Parser.placeholder)))
+
+(defn r-content []
+  (Parser.alt (Parser.recurse &*r-pair*)
+              (Parser.pure ())))
+
+(defn r-pair-impl []
+  (Parser.between (Parser.byte \() (Parser.byte \))
+                  (r-content)))
+
+; Side-effecting init via a dummy def — runs at module load.
+(def -r-init (do (set! *r-pair* (r-pair-impl)) 0))
+
+(deftest test
+  ; ----------------------------------------
+  ; pure
+  ; ----------------------------------------
+
+  (assert-equal test 42
+    (match (Parser.parse (Parser.pure 42) "")
+      (Result.Success v) v
+      (Result.Error _)   0)
+    "pure produces value on empty input")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.pure 42) "x"))
+    "pure leaves input unconsumed; strict parse rejects trailing")
+
+  ; ----------------------------------------
+  ; fail
+  ; ----------------------------------------
+
+  (assert-true test
+    (err? &(Parser.parse (the (Parser Int) (Parser.fail @"thing")) ""))
+    "fail always errors")
+
+  ; ----------------------------------------
+  ; byte
+  ; ----------------------------------------
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.byte \a) "a"))
+    "byte matches single char")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.byte \a) "b"))
+    "byte fails on mismatch")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.byte \a) ""))
+    "byte fails on empty input")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.byte \a) "ab"))
+    "byte fails on trailing content (parse is strict)")
+
+  ; ----------------------------------------
+  ; satisfy
+  ; ----------------------------------------
+
+  (assert-true test
+    (ok? &(Parser.parse
+            (Parser.satisfy (fn [c] (Char.>= c \0)) @"digit")
+            "5"))
+    "satisfy accepts when pred holds")
+
+  (assert-true test
+    (err? &(Parser.parse
+             (Parser.satisfy (fn [c] (and (Char.>= c \0)
+                                          (Char.<= c \9)))
+                             @"digit")
+             "a"))
+    "satisfy rejects when pred fails")
+
+  ; ----------------------------------------
+  ; any-byte
+  ; ----------------------------------------
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.any-byte) "x"))
+    "any-byte consumes one byte")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.any-byte) ""))
+    "any-byte fails on empty input")
+
+  ; ----------------------------------------
+  ; eof
+  ; ----------------------------------------
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.eof) ""))
+    "eof succeeds on empty input")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.eof) "x"))
+    "eof fails when input remains")
+
+  ; ----------------------------------------
+  ; map
+  ; ----------------------------------------
+
+  (assert-equal test 65
+    (match (Parser.parse
+             (Parser.map (Parser.byte \A) (fn [c] (Char.to-int c)))
+             "A")
+      (Result.Success v) v
+      (Result.Error _)   0)
+    "map applies function to result")
+
+  ; ----------------------------------------
+  ; seq
+  ; ----------------------------------------
+
+  (assert-true test
+    (ok? &(Parser.parse
+            (Parser.seq (Parser.byte \a) (Parser.byte \b))
+            "ab"))
+    "seq matches two adjacent bytes")
+
+  (assert-true test
+    (err? &(Parser.parse
+             (Parser.seq (Parser.byte \a) (Parser.byte \b))
+             "ax"))
+    "seq fails when second parser fails")
+
+  ; ----------------------------------------
+  ; alt without try: no backtrack on consume
+  ; ----------------------------------------
+
+  (assert-true test
+    (ok? &(Parser.parse
+            (Parser.alt (Parser.byte \a) (Parser.byte \b))
+            "a"))
+    "alt picks left when left empty-succeeds")
+
+  (assert-true test
+    (ok? &(Parser.parse
+            (Parser.alt (Parser.byte \a) (Parser.byte \b))
+            "b"))
+    "alt picks right when left empty-fails")
+
+  (assert-true test
+    (err? &(Parser.parse
+             (Parser.alt
+               (Parser.seq (Parser.byte \a) (Parser.byte \b))
+               (Parser.seq (Parser.byte \a) (Parser.byte \c)))
+             "ac"))
+    "alt without try: consumed failure does not backtrack")
+
+  ; ----------------------------------------
+  ; try: enables full backtrack
+  ; ----------------------------------------
+
+  (assert-true test
+    (ok? &(Parser.parse
+            (Parser.alt
+              (Parser.try (Parser.seq (Parser.byte \a) (Parser.byte \b)))
+              (Parser.seq (Parser.byte \a) (Parser.byte \c)))
+            "ac"))
+    "try in alt: consumed-then-failure rewinds and tries the other branch")
+
+  ; ----------------------------------------
+  ; bind
+  ; ----------------------------------------
+
+  (assert-true test
+    (ok? &(Parser.parse
+            (Parser.bind (Parser.any-byte)
+                         (fn [c] (Parser.byte c)))
+            "aa"))
+    "bind threads value into continuation parser")
+
+  (assert-true test
+    (err? &(Parser.parse
+             (Parser.bind (Parser.any-byte)
+                          (fn [c] (Parser.byte c)))
+             "ab"))
+    "bind: continuation can fail")
+
+  ; ----------------------------------------
+  ; string
+  ; ----------------------------------------
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.string @"hello") "hello"))
+    "string matches exact literal")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.string @"hello") "help!"))
+    "string fails on partial mismatch")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.string @"hello") "hi"))
+    "string fails when input shorter than literal")
+
+  (assert-true test
+    (ok? &(Parser.parse
+            (Parser.alt (Parser.string @"foo") (Parser.string @"for"))
+            "for"))
+    "string is atomic: alt picks second alternative even after partial match of first")
+
+  ; ----------------------------------------
+  ; label
+  ; ----------------------------------------
+
+  (assert-true test
+    (match (Parser.parse (Parser.label @"a digit"
+                          (Parser.satisfy (fn [c] (and (Char.>= c \0) (Char.<= c \9)))
+                                          @"raw"))
+                         "x")
+      (Result.Error e) (= "a digit" (Array.unsafe-nth (ParseErr.expected &e) 0))
+      _ false)
+    "label replaces the expected-set on empty failure")
+
+  ; ----------------------------------------
+  ; optional
+  ; ----------------------------------------
+
+  (assert-true test
+    (match (Parser.parse (Parser.optional (Parser.byte \a)) "a")
+      (Result.Success m)
+        (match m (Maybe.Just _) true (Maybe.Nothing) false)
+      _ false)
+    "optional wraps successful value in Just")
+
+  (assert-true test
+    (match (Parser.parse (Parser.optional (Parser.byte \a)) "")
+      (Result.Success m)
+        (match m (Maybe.Just _) false (Maybe.Nothing) true)
+      _ false)
+    "optional yields Nothing when p empty-fails")
+
+  ; ----------------------------------------
+  ; lookahead
+  ; ----------------------------------------
+
+  (assert-true test
+    (ok? &(Parser.parse
+            (Parser.seq (Parser.lookahead (Parser.byte \a)) (Parser.byte \a))
+            "a"))
+    "lookahead does not consume; subsequent byte matches the same input")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.lookahead (Parser.byte \a)) "a"))
+    "lookahead alone leaves cursor at start; strict parse rejects")
+
+  ; ----------------------------------------
+  ; not-followed-by
+  ; ----------------------------------------
+
+  (assert-true test
+    (ok? &(Parser.parse
+            (Parser.seq (Parser.byte \a) (Parser.not-followed-by (Parser.byte \b)))
+            "a"))
+    "not-followed-by succeeds when subsequent parser would fail")
+
+  (assert-true test
+    (err? &(Parser.parse
+             (Parser.seq (Parser.byte \a) (Parser.not-followed-by (Parser.byte \b)))
+             "ab"))
+    "not-followed-by fails when subsequent parser would succeed")
+
+  ; ----------------------------------------
+  ; count
+  ; ----------------------------------------
+
+  (assert-true test
+    (match (Parser.parse (Parser.count 3 (Parser.byte \a)) "aaa")
+      (Result.Success arr) (= 3 (Array.length &arr))
+      _ false)
+    "count 3 returns array of 3 values on \"aaa\"")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.count 3 (Parser.byte \a)) "aa"))
+    "count 3 fails on insufficient input")
+
+  ; ----------------------------------------
+  ; many
+  ; ----------------------------------------
+
+  (assert-true test
+    (match (Parser.parse (Parser.many (Parser.byte \a)) "")
+      (Result.Success arr) (= 0 (Array.length &arr))
+      _ false)
+    "many on empty input yields empty array")
+
+  (assert-true test
+    (match (Parser.parse (Parser.many (Parser.byte \a)) "aaaa")
+      (Result.Success arr) (= 4 (Array.length &arr))
+      _ false)
+    "many consumes greedily")
+
+  ; ----------------------------------------
+  ; many1
+  ; ----------------------------------------
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.many1 (Parser.byte \a)) ""))
+    "many1 fails on zero matches")
+
+  (assert-true test
+    (match (Parser.parse (Parser.many1 (Parser.byte \a)) "aaa")
+      (Result.Success arr) (= 3 (Array.length &arr))
+      _ false)
+    "many1 collects when at least one match")
+
+  ; ----------------------------------------
+  ; between
+  ; ----------------------------------------
+
+  (assert-true test
+    (ok? &(Parser.parse
+            (Parser.between (Parser.byte \[) (Parser.byte \]) (Parser.byte \x))
+            "[x]"))
+    "between matches open/inner/close")
+
+  (assert-true test
+    (err? &(Parser.parse
+             (Parser.between (Parser.byte \[) (Parser.byte \]) (Parser.byte \x))
+             "[y]"))
+    "between fails if inner doesn't match")
+
+  ; ----------------------------------------
+  ; sep-by / sep-by1
+  ; ----------------------------------------
+
+  (assert-true test
+    (match (Parser.parse
+             (Parser.sep-by1 (Parser.byte \a) (Parser.byte \,))
+             "a,a,a")
+      (Result.Success arr) (= 3 (Array.length &arr))
+      _ false)
+    "sep-by1: 3 elements")
+
+  (assert-true test
+    (match (Parser.parse
+             (Parser.sep-by1 (Parser.byte \a) (Parser.byte \,))
+             "a")
+      (Result.Success arr) (= 1 (Array.length &arr))
+      _ false)
+    "sep-by1: single element (no separator)")
+
+  (assert-true test
+    (err? &(Parser.parse
+             (Parser.sep-by1 (Parser.byte \a) (Parser.byte \,))
+             ""))
+    "sep-by1 fails on empty input")
+
+  (assert-true test
+    (match (Parser.parse
+             (Parser.sep-by (Parser.byte \a) (Parser.byte \,))
+             "")
+      (Result.Success arr) (= 0 (Array.length &arr))
+      _ false)
+    "sep-by allows empty")
+
+  ; ----------------------------------------
+  ; choice
+  ; ----------------------------------------
+
+  (assert-true test
+    (ok? &(Parser.parse
+            (Parser.choice [(Parser.byte \a) (Parser.byte \b) (Parser.byte \c)])
+            "b"))
+    "choice picks any matching parser")
+
+  (assert-true test
+    (err? &(Parser.parse
+             (Parser.choice [(Parser.byte \a) (Parser.byte \b) (Parser.byte \c)])
+             "z"))
+    "choice fails when none match")
+
+  ; ----------------------------------------
+  ; slice-of
+  ; ----------------------------------------
+
+  (assert-equal test "abc"
+    &(match (Parser.parse
+              (Parser.slice-of (Parser.seq (Parser.byte \a)
+                                           (Parser.seq (Parser.byte \b)
+                                                       (Parser.byte \c))))
+              "abc")
+       (Result.Success s) s
+       (Result.Error _)   @"")
+    "slice-of returns the consumed input")
+
+  ; ----------------------------------------
+  ; take
+  ; ----------------------------------------
+
+  (assert-equal test "abc"
+    &(match (Parser.parse (Parser.take 3) "abc")
+       (Result.Success s) s
+       (Result.Error _)   @"")
+    "take 3 consumes 3 bytes and returns them")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.take 5) "abc"))
+    "take fails on insufficient input")
+
+  ; ----------------------------------------
+  ; take-while / take-while1
+  ; ----------------------------------------
+
+  (assert-equal test "123"
+    &(match (Parser.parse
+              (Parser.seq (Parser.take-while (fn [c] (and (Char.>= c \0) (Char.<= c \9))))
+                          (Parser.string @"abc"))
+              "123abc")
+       (Result.Success p) @(Pair.a &p)
+       (Result.Error _)   @"")
+    "take-while reads digits until non-digit")
+
+  (assert-true test
+    (err? &(Parser.parse
+             (Parser.take-while1 (fn [c] (and (Char.>= c \0) (Char.<= c \9))))
+             "abc"))
+    "take-while1 fails when no bytes match")
+
+  ; ----------------------------------------
+  ; UTF-8 layer
+  ; ----------------------------------------
+
+  (assert-true test
+    (ok? &(Parser.parse
+            (Parser.seq (Parser.UTF8.any-char)
+                        (Parser.seq (Parser.UTF8.any-char)
+                                    (Parser.seq (Parser.UTF8.any-char)
+                                                (Parser.UTF8.any-char))))
+            "café"))
+    "four any-char consume café (incl. é which is 2 bytes)")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.UTF8.any-char) ""))
+    "any-char fails on empty input")
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.UTF8.char \é) "é"))
+    "char matches multi-byte codepoint é")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.UTF8.char \é) "e"))
+    "char rejects different codepoint")
+
+  (assert-true test
+    (ok? &(Parser.parse
+            (Parser.UTF8.codepoint-satisfy
+              (fn [c] (Int.> (Char.to-int c) 127))
+              @"non-ASCII")
+            "ñ"))
+    "codepoint-satisfy accepts when pred holds on multi-byte cp")
+
+  (assert-true test
+    (err? &(Parser.parse
+             (Parser.UTF8.codepoint-satisfy
+               (fn [c] (Int.> (Char.to-int c) 127))
+               @"non-ASCII")
+             "a"))
+    "codepoint-satisfy rejects when pred fails")
+
+  ; ----------------------------------------
+  ; Lexer
+  ; ----------------------------------------
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.Lexer.whitespace) "  \t\n "))
+    "whitespace consumes mixed whitespace")
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.Lexer.whitespace) ""))
+    "whitespace allows empty")
+
+  (assert-equal test "hello"
+    &(match (Parser.parse
+              (Parser.Lexer.lexeme (Parser.string @"hello"))
+              "hello   ")
+       (Result.Success s) s
+       (Result.Error _)   @"")
+    "lexeme strips trailing whitespace, returns p's value")
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.Lexer.symbol @"def") "def    "))
+    "symbol matches literal + trailing whitespace")
+
+  (assert-equal test 42
+    (match (Parser.parse (Parser.Lexer.unsigned-int) "42")
+      (Result.Success n) n
+      _ -1)
+    "unsigned-int parses decimal")
+
+  (assert-equal test -17
+    (match (Parser.parse (Parser.Lexer.integer) "-17")
+      (Result.Success n) n
+      _ 0)
+    "integer parses negative")
+
+  (assert-equal test 99
+    (match (Parser.parse (Parser.Lexer.integer) "99")
+      (Result.Success n) n
+      _ 0)
+    "integer parses positive without sign")
+
+  (assert-equal test "foo_bar2"
+    &(match (Parser.parse (Parser.Lexer.identifier) "foo_bar2")
+       (Result.Success s) s
+       (Result.Error _)   @"")
+    "identifier accepts letters, digits, underscores after a letter start")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.identifier) "2foo"))
+    "identifier rejects digit start")
+
+  ; ----------------------------------------
+  ; format-error
+  ; ----------------------------------------
+
+  (assert-true test
+    (match (Parser.parse (Parser.byte \a) "b")
+      (Result.Error e) (String.contains-string? &(Parser.format-error &e) "expected")
+      _ false)
+    "format-error mentions the expected label")
+
+  (assert-true test
+    (match (Parser.parse (Parser.byte \a) "b")
+      (Result.Error e) (String.contains-string? &(Parser.format-error &e) "1:1")
+      _ false)
+    "format-error mentions line:col")
+
+  ; ----------------------------------------
+  ; lazy
+  ; ----------------------------------------
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.lazy (fn [] (Parser.byte \a))) "a"))
+    "lazy: non-recursive thunk produces a working parser")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.lazy (fn [] (Parser.byte \a))) "b"))
+    "lazy: failures of the inner parser propagate")
+
+  (assert-true test
+    (ok? &(Parser.parse (parens-pair) "()"))
+    "lazy: recursive grammar parses ()")
+
+  (assert-true test
+    (ok? &(Parser.parse (parens-pair) "((()))"))
+    "lazy: recursive grammar parses nested ((()))")
+
+  (assert-true test
+    (err? &(Parser.parse (parens-pair) "(()"))
+    "lazy: recursive grammar rejects unbalanced (()")
+
+  (assert-true test
+    (err? &(Parser.parse (parens-pair) "())"))
+    "lazy: recursive grammar rejects unbalanced ())")
+
+  ; ----------------------------------------
+  ; Integration: parse "[1, 2, 3, 4, 5]" and sum
+  ; ----------------------------------------
+
+  (assert-equal test 15
+    (match (Parser.parse
+             (Parser.map
+               (Parser.between
+                 (Parser.Lexer.symbol @"[")
+                 (Parser.Lexer.symbol @"]")
+                 (Parser.sep-by (Parser.Lexer.integer)
+                                (Parser.Lexer.symbol @",")))
+               (fn [arr] (Array.reduce &(fn [acc n] (Int.+ acc @n)) 0 &arr)))
+             "[1, 2, 3, 4, 5]")
+      (Result.Success n) n
+      _ -1)
+    "integration: parse [1,2,3,4,5] and sum to 15")
+
+  (assert-equal test 0
+    (match (Parser.parse
+             (Parser.map
+               (Parser.between
+                 (Parser.Lexer.symbol @"[")
+                 (Parser.Lexer.symbol @"]")
+                 (Parser.sep-by (Parser.Lexer.integer)
+                                (Parser.Lexer.symbol @",")))
+               (fn [arr] (Array.length &arr)))
+             "[]")
+      (Result.Success n) n
+      _ -1)
+    "integration: empty list is valid")
+
+  ; ----------------------------------------
+  ; Integration: key=value pairs separated by ;
+  ; ----------------------------------------
+
+  (assert-true test
+    (match (Parser.parse
+             (Parser.sep-by1
+               (Parser.seq (Parser.Lexer.identifier)
+                           (Parser.seq (Parser.Lexer.symbol @"=")
+                                       (Parser.Lexer.unsigned-int)))
+               (Parser.Lexer.symbol @";"))
+             "x=1; y=42; z=7")
+      (Result.Success arr) (= 3 (Array.length &arr))
+      _ false)
+    "integration: 3 key=value pairs")
+
+  ; ----------------------------------------
+  ; recurse + placeholder
+  ; ----------------------------------------
+
+  (assert-true test
+    (ok? &(Parser.parse (r-pair-impl) "()"))
+    "recurse: stable-cell grammar parses ()")
+
+  (assert-true test
+    (ok? &(Parser.parse (r-pair-impl) "((()))"))
+    "recurse: stable-cell grammar parses nested ((()))")
+
+  (assert-true test
+    (err? &(Parser.parse (r-pair-impl) "(()"))
+    "recurse: stable-cell grammar rejects unbalanced (()")
+
+  (assert-true test
+    (err? &(Parser.parse (the (Parser Int) (Parser.placeholder)) "anything"))
+    "placeholder: uninitialized parser fails")
+
+  ; ----------------------------------------
+  ; line/col tracking through newlines
+  ; ----------------------------------------
+
+  ; Parse "a\nb" with `(seq (byte \a) (seq (byte \newline) (byte \z)))`.
+  ; The byte \z fails at line 2, col 1 (newline bumped line, col reset).
+  (assert-true test
+    (match (Parser.parse
+             (Parser.seq (Parser.byte \a)
+                         (Parser.seq (Parser.byte \newline)
+                                     (Parser.byte \z)))
+             "a\nb")
+      (Result.Error e)
+        (and (= 2 @(ParseErr.line &e)) (= 1 @(ParseErr.col &e)))
+      _ false)
+    "line/col: error after newline reports line 2 col 1")
+
+  (assert-true test
+    (match (Parser.parse
+             (Parser.seq (Parser.byte \x) (Parser.byte \y))
+             "xz")
+      (Result.Error e)
+        (and (= 1 @(ParseErr.line &e)) (= 2 @(ParseErr.col &e)))
+      _ false)
+    "line/col: error after one byte reports line 1 col 2")
+
+  ; ----------------------------------------
+  ; expected-set merging on alt
+  ; ----------------------------------------
+
+  ; (alt (byte \a) (byte \b)) on "z" should mention BOTH 'a' and 'b' in
+  ; the expected-set.
+  (assert-true test
+    (match (Parser.parse
+             (Parser.alt (Parser.byte \a) (Parser.byte \b))
+             "z")
+      (Result.Error e) (= 2 (Array.length (ParseErr.expected &e)))
+      _ false)
+    "expected-set: alt of two failed empties merges expected labels (size 2)")
+
+  (assert-true test
+    (match (Parser.parse
+             (Parser.alt (Parser.label @"alpha" (Parser.byte \a))
+                         (Parser.label @"beta"  (Parser.byte \b)))
+             "z")
+      (Result.Error e)
+        (let [exp (ParseErr.expected &e)]
+          (and (= 2 (Array.length exp))
+               (and (String.contains-string? &(Parser.format-error &e) "alpha")
+                    (String.contains-string? &(Parser.format-error &e) "beta"))))
+      _ false)
+    "expected-set: labeled alts merge into the human-readable error")
+
+  ; ----------------------------------------
+  ; malformed UTF-8
+  ; ----------------------------------------
+
+  ; "\xc3" is the start byte of a 2-byte UTF-8 sequence (e.g. é = c3 a9)
+  ; but appears alone — truncated. any-char should fail empty.
+  (assert-true test
+    (err? &(Parser.parse (Parser.UTF8.any-char)
+                         &(String.from-bytes &[(Byte.from-int 0xc3)])))
+    "utf8: truncated 2-byte sequence fails empty")
+
+  ; "\x80" is a UTF-8 continuation byte at the start of input. Invalid.
+  (assert-true test
+    (err? &(Parser.parse (Parser.UTF8.any-char)
+                         &(String.from-bytes &[(Byte.from-int 0x80)])))
+    "utf8: lone continuation byte fails empty")
+)

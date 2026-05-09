@@ -1,0 +1,129 @@
+<!DOCTYPE HTML>
+
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+        <link rel="stylesheet" href="../style.css">
+    </head>
+    <body>
+        <div class="content">
+            <div class="logo">
+                <a href="https://github.com/carpentry-org/parsec">
+                    <img src="">
+                </a>
+                <div class="title">
+                    parsec
+                </div>
+                <div class="index">
+                    <ul>
+                        <li>
+                            <details>
+                                <summary>
+                                    <a href="Parser.html">
+                                        Parser
+                                    </a>
+                                </summary>
+                                <ul>
+                                    <li>
+                                        <a href="Parser.Lexer.html">
+                                            Lexer
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="Parser.UTF8.html">
+                                            UTF8
+                                        </a>
+                                    </li>
+                                </ul>
+                            </details>
+                        </li>
+                        <li>
+                            <a href="Cursor.html">
+                                Cursor
+                            </a>
+                        </li>
+                        <li>
+                            <a href="ParseErr.html">
+                                ParseErr
+                            </a>
+                        </li>
+                        <li>
+                            <a href="Reply.html">
+                                Reply
+                            </a>
+                        </li>
+                        <li>
+                            <a href="Tutorial.html">
+                                Tutorial
+                            </a>
+                        </li>
+                        <li>
+                            <a href="Pitfalls.html">
+                                Pitfalls
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            <div class="module">
+                <h1>
+                    Pitfalls
+                </h1>
+                <div class="module-description">
+                    <p>in which I discuss some dioms and gotchas you'll likely hit
+while building a grammar.</p>
+<h2>Prefer <code>recurse</code> over <code>lazy</code> for recursive grammars</h2>
+<p><code>Parser.lazy</code> defers parser construction until run time, so it can
+close over self-references. The cost is that every invocation rebuilds
+the parser sub-tree, so for input of depth N, that's N allocations per
+parse.</p>
+<p><code>Parser.recurse</code> runs a parser through a stable cell and does not
+rebuild. Declare the recursive position in a top-level <code>def</code>, set it
+once, reference it from sub-parsers. See <code>examples/lisp.carp</code> for the
+pattern. Use <code>lazy</code> only when the grammar is shallow or short-lived or
+performance is less important than clarity.</p>
+<h2>A <code>lazy</code> thunk must call a <em>sibling</em>, not itself</h2>
+<pre><code class="language-clojure">(defn parens []
+  (Parser.between '(' ')'
+    (Parser.optional (Parser.lazy (fn [] (parens))))))
+</code></pre>
+<p>This loops at parse time. The self-call inside the thunk does not
+terminate. Split the recursive position into two functions:</p>
+<pre><code class="language-clojure">(defn parens-content []
+  (Parser.alt (Parser.lazy (fn [] (parens-pair)))
+              (Parser.pure ())))
+
+(defn parens-pair []
+  (Parser.between '(' ')' (parens-content)))
+</code></pre>
+<p><code>recurse</code> against a stable cell sidesteps this entirely.</p>
+<h2>Use <code>String.byte-slice</code>, not <code>String.slice</code></h2>
+<p>In a custom combinator that extracts a substring, use
+<code>String.byte-slice</code>. The library does internally. <code>String.slice</code> walks
+the input twice (<code>chars</code> then <code>from-chars</code>), <code>byte-slice</code> is a direct
+memcpy. The cost difference is two orders of magnitude.</p>
+<p>The tradeoff here is UTF-8.</p>
+<h2>Pass <code>(fn ...)</code> to combinators by value, not by reference</h2>
+<p>Combinators like <code>Parser.map</code>, <code>Parser.bind</code>, <code>Parser.satisfy</code>, and
+<code>Parser.take-while</code> take their function arguments by value:</p>
+<pre><code class="language-clojure">(Parser.map (Parser.byte \a) (fn [c] (Char.to-int c)))    ; right
+(Parser.map (Parser.byte \a) &amp;(fn [c] (Char.to-int c)))   ; wrong
+</code></pre>
+<p>The <code>&amp;fn</code> form compiles for capture-free closures (Carp hoists those
+to static functions) but produces a dangling reference once the
+closure captures a local. The failure mode is a runtime segfault, not
+a compile error.</p>
+<p>This should be resolved in Carp eventually, but until then I want to
+tag it.</p>
+<h2><code>Parser.parse</code> is strict</h2>
+<p><code>Parser.parse p input</code> succeeds only if <code>p</code> consumes all of <code>input</code>.
+There is no partial-parse entry point. If you want to ignore trailing
+input, append a permissive <code>take-while</code> to your grammar, or trim the
+input before parsing.</p>
+
+                </div>
+            </div>
+        </div>
+    </body>
+</html>

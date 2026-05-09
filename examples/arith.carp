@@ -1,0 +1,102 @@
+; Arithmetic expression parser-evaluator with operator precedence.
+;
+; Grammar (whitespace-tolerant, left-associative):
+;   expr   = term   ('+' term  | '-' term)*
+;   term   = factor ('*' factor | '/' factor)*
+;   factor = integer | '(' expr ')'
+;
+; Returns the evaluated Int result. Uses `Parser.recurse` against a
+; stable cell to break the recursion (factor refers back to expr).
+
+(load "../parsec.carp")
+
+(def *expr* (the (Parser Int) (Parser.placeholder)))
+
+; ----------------------------------------------------------------
+; factor = integer | '(' expr ')'
+; ----------------------------------------------------------------
+(defn factor []
+  (Parser.alt
+    (Parser.Lexer.lexeme (Parser.Lexer.integer))
+    (Parser.Lexer.lexeme
+      (Parser.between (Parser.Lexer.symbol @"(")
+                      (Parser.Lexer.symbol @")")
+                      (Parser.recurse &*expr*)))))
+
+; ----------------------------------------------------------------
+; left-associative fold of `factor (op factor)*` into an Int.
+; `op` here is a Char produced by symbol; we apply it to the accumulator.
+; ----------------------------------------------------------------
+(defn apply-op [acc op rhs]
+  (cond
+    (Char.= op \+) (Int.+ acc rhs)
+    (Char.= op \-) (Int.- acc rhs)
+    (Char.= op \*) (Int.* acc rhs)
+    (Char.= op \/) (Int./ acc rhs)
+    acc))
+
+; chainl1: parse `head (op next)*` and left-fold.
+; Built as `seq head (many (seq op next))` then mapped to a fold so the
+; sub-parsers are constructed once, not per-invocation (which would
+; consume them more than once).
+(defn chainl1 [head op next]
+  (Parser.map
+    (Parser.seq head (Parser.many (Parser.seq op next)))
+    (fn [outer]
+      (let [h @(Pair.a &outer)
+            pairs (Pair.b &outer)]
+        (Array.reduce &(fn [acc p]
+                         (apply-op acc @(Pair.a p) @(Pair.b p)))
+                      h
+                      pairs)))))
+
+; ----------------------------------------------------------------
+; term = factor ('*' factor | '/' factor)*
+; ----------------------------------------------------------------
+(defn mul-op []
+  (Parser.alt
+    (Parser.map (Parser.Lexer.symbol @"*") (fn [_] \*))
+    (Parser.map (Parser.Lexer.symbol @"/") (fn [_] \/))))
+
+(defn term []
+  (chainl1 (factor) (mul-op) (factor)))
+
+; ----------------------------------------------------------------
+; expr = term ('+' term | '-' term)*
+; ----------------------------------------------------------------
+(defn add-op []
+  (Parser.alt
+    (Parser.map (Parser.Lexer.symbol @"+") (fn [_] \+))
+    (Parser.map (Parser.Lexer.symbol @"-") (fn [_] \-))))
+
+(defn expr-impl []
+  (chainl1 (term) (add-op) (term)))
+
+; Init the cell *expr* once, before any parsing.
+(def -init-arith (do (set! *expr* (expr-impl)) 0))
+
+; ----------------------------------------------------------------
+; Top-level: skip leading whitespace, then expr.
+; ----------------------------------------------------------------
+(defn arith []
+  (Parser.bind (Parser.Lexer.whitespace)
+               (fn [_] (Parser.recurse &*expr*))))
+
+(defn run-on [input]
+  (do
+    (IO.println &(fmt "input: %s" input))
+    (match (Parser.parse (arith) input)
+      (Result.Success n) (IO.println &(fmt "  = %d" n))
+      (Result.Error e)   (IO.println &(fmt "  err: %s" &(Parser.format-error &e))))))
+
+(defn main []
+  (do
+    (run-on "1 + 2")
+    (run-on "1 + 2 * 3")
+    (run-on "(1 + 2) * 3")
+    (run-on "10 - 4 - 3")           ; left-associative: ((10 - 4) - 3) = 3
+    (run-on "100 / 10 / 2")         ; left-associative: ((100 / 10) / 2) = 5
+    (run-on "2 * (3 + 4) - 5")
+    (run-on "  ( ( 1 + 2 ) * 3 + 4 ) ")
+    (run-on "1 +")                   ; trailing operator
+    (run-on "")))                    ; empty input

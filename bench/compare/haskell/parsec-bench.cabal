@@ -1,0 +1,23 @@
+cabal-version:      3.0
+name:               parsec-bench
+version:            0.1.0.0
+synopsis:           Head-to-head benchmark vs Carp parsec
+build-type:         Simple
+
+executable parsec-bench
+  main-is:          Main.hs
+  hs-source-dirs:   src
+  build-depends:    base   >= 4.0 && < 5,
+                    parsec >= 3.0,
+                    time   >= 1.0,
+                    deepseq >= 1.4
+  default-language: Haskell2010
+  ghc-options:      -O2 -rtsopts
+
+executable mem-profile
+  main-is:          Mem.hs
+  hs-source-dirs:   src
+  build-depends:    base   >= 4.0 && < 5,
+                    parsec >= 3.0
+  default-language: Haskell2010
+  ghc-options:      -O2 -rtsopts

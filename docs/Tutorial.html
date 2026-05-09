@@ -1,0 +1,254 @@
+<!DOCTYPE HTML>
+
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+        <link rel="stylesheet" href="../style.css">
+    </head>
+    <body>
+        <div class="content">
+            <div class="logo">
+                <a href="https://github.com/carpentry-org/parsec">
+                    <img src="">
+                </a>
+                <div class="title">
+                    parsec
+                </div>
+                <div class="index">
+                    <ul>
+                        <li>
+                            <details>
+                                <summary>
+                                    <a href="Parser.html">
+                                        Parser
+                                    </a>
+                                </summary>
+                                <ul>
+                                    <li>
+                                        <a href="Parser.Lexer.html">
+                                            Lexer
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="Parser.UTF8.html">
+                                            UTF8
+                                        </a>
+                                    </li>
+                                </ul>
+                            </details>
+                        </li>
+                        <li>
+                            <a href="Cursor.html">
+                                Cursor
+                            </a>
+                        </li>
+                        <li>
+                            <a href="ParseErr.html">
+                                ParseErr
+                            </a>
+                        </li>
+                        <li>
+                            <a href="Reply.html">
+                                Reply
+                            </a>
+                        </li>
+                        <li>
+                            <a href="Tutorial.html">
+                                Tutorial
+                            </a>
+                        </li>
+                        <li>
+                            <a href="Pitfalls.html">
+                                Pitfalls
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            <div class="module">
+                <h1>
+                    Tutorial
+                </h1>
+                <div class="module-description">
+                    <p>in which we will build an arithmetic expression parser step by
+step. We will cover every combinator most grammars need.</p>
+<p>By the end of this tutorial you'll have a parser that takes strings
+like <code>2 * (3 + 4) - 5</code> and returns <code>9</code>.</p>
+<p>The complete file is <code>examples/arith.carp</code>. We build it in five steps,
+each runnable on its own.</p>
+<h2>0. setup</h2>
+<pre><code class="language-clojure">(load &quot;git@github.com:carpentry-org/parsec@0.1.0&quot;)
+</code></pre>
+<p><code>Parser.parse</code> is strict, it succeeds only if the parser consumes the
+whole input. We'll use that throughout.</p>
+<h2>1. parse a single integer</h2>
+<p>The simplest grammar is just a number. The library ships with
+<code>Parser.Lexer.integer</code>, which handles an optional sign and skips no
+trailing whitespace.</p>
+<pre><code class="language-clojure">(defn main []
+  (match (Parser.parse (Parser.Lexer.integer) &quot;42&quot;)
+    (Result.Success n) (println* &amp;n)
+    (Result.Error e)   (IO.errorln &amp;(Parser.format-error &amp;e))))
+</code></pre>
+<p>When you run it you should see <code>42</code>. Try <code>-7</code>, <code>12345</code>. Try <code>forty-two</code> to
+see the error.</p>
+<h2>2. handle whitespace</h2>
+<p>Real input has spaces. <code>Parser.Lexer.lexeme</code> runs a parser, then skips
+trailing whitespace. So <code>(Parser.Lexer.lexeme (Parser.Lexer.integer))</code>
+matches an integer followed by any whitespace.</p>
+<p>We also want leading whitespace to be tolerated. The cleanest way is
+to wrap the top-level parser:</p>
+<pre><code class="language-clojure">(defn arith []
+  (Parser.bind (Parser.Lexer.whitespace)
+               (fn [_] (Parser.Lexer.lexeme (Parser.Lexer.integer)))))
+</code></pre>
+<p><code>Parser.bind</code> runs the first parser, then feeds the result into a
+function that returns the next parser. We discard the whitespace's
+result and yield the integer. This is the monadic chaining you'd write
+as <code>whitespace &gt;&gt; integer</code> in Haskell, in case you already know Parsec.</p>
+<h2>3. multiplication</h2>
+<p>We want <code>2 * 3</code> to evaluate to <code>6</code>. The grammar is:</p>
+<pre><code>term = integer ('*' integer | '/' integer)*
+</code></pre>
+<p>This translates to “an integer, then zero or more <code>(operator, integer)</code> pairs,
+fold the pairs over the first integer”.</p>
+<pre><code class="language-clojure">(defn apply-op [acc op rhs]
+  (cond
+    (Char.= op \*) (Int.* acc rhs)
+    (Char.= op \/) (Int./ acc rhs)
+    acc))
+
+(defn mul-op []
+  (Parser.alt
+    (Parser.map (Parser.Lexer.symbol @&quot;*&quot;) (fn [_] \*))
+    (Parser.map (Parser.Lexer.symbol @&quot;/&quot;) (fn [_] \/))))
+</code></pre>
+<p><code>Parser.alt</code> tries the first parser. If it fails <em>without consuming</em>,
+it tries the second. <code>Parser.Lexer.symbol</code> matches a literal string
+and skips trailing whitespace.</p>
+<p><code>(Parser.map f p)</code> runs p and applies f to its result. Here we throw
+away the matched <code>&quot;*&quot;</code> and produce the Char <code>\*</code>.</p>
+<p>The chaining looks like this:</p>
+<pre><code class="language-clojure">(defn term []
+  (Parser.map
+    (Parser.seq
+      (Parser.Lexer.lexeme (Parser.Lexer.integer))
+      (Parser.many (Parser.seq (mul-op)
+                               (Parser.Lexer.lexeme (Parser.Lexer.integer)))))
+    (fn [outer]
+      (let [first @(Pair.a &amp;outer)
+            pairs (Pair.b &amp;outer)]
+        (Array.reduce &amp;(fn [acc p] (apply-op acc @(Pair.a p) @(Pair.b p)))
+                      first
+                      pairs)))))
+</code></pre>
+<p>If you test it, you should get:</p>
+<pre><code>&quot;2 * 3&quot;      =&gt; 6
+&quot;2 * 3 * 4&quot;  =&gt; 24
+&quot;100 / 10&quot;   =&gt; 10
+</code></pre>
+<h2>4. addition with precedence</h2>
+<p>For <code>1 + 2 * 3</code> to evaluate to <code>7</code> (not <code>9</code>), addition has to be
+<em>lower</em> precedence than multiplication. The standard trick is that an
+expression is a sum of terms, where each term is a product of factors.</p>
+<pre><code>expr = term ('+' term | '-' term)*
+term = factor ('*' factor | '/' factor)*
+</code></pre>
+<p>Notice the <code>chainl1</code> shape repeats. Let's factor it out:</p>
+<pre><code class="language-clojure">(defn chainl1 [head op next]
+  (Parser.map
+    (Parser.seq head (Parser.many (Parser.seq op next)))
+    (fn [outer]
+      (let [h @(Pair.a &amp;outer)
+            pairs (Pair.b &amp;outer)]
+        (Array.reduce &amp;(fn [acc p]
+                         (apply-op acc @(Pair.a p) @(Pair.b p)))
+                      h
+                      pairs)))))
+</code></pre>
+<p>Now <code>term</code> and <code>expr</code> are one-liners:</p>
+<pre><code class="language-clojure">(defn term [] (chainl1 (factor) (mul-op) (factor)))
+(defn expr [] (chainl1 (term)   (add-op) (term)))
+</code></pre>
+<p>Here, <code>add-op</code> is just <code>mul-op</code> with <code>\+</code> and <code>\-</code>.</p>
+<h2>5. parens, and the recursion problem</h2>
+<p>The remaining piece is <code>factor</code>:</p>
+<pre><code>factor = integer | '(' expr ')'
+</code></pre>
+<p>A factor is either a literal integer or a parenthesized expression.
+The recursion path is <code>factor -&gt; expr -&gt; term -&gt; factor</code>.</p>
+<p>In Carp, this is a problem. If we try the obvious thing:</p>
+<pre><code class="language-clojure">(defn factor []
+  (Parser.alt
+    (Parser.Lexer.lexeme (Parser.Lexer.integer))
+    (Parser.between (Parser.Lexer.symbol @&quot;(&quot;)
+                    (Parser.Lexer.symbol @&quot;)&quot;)
+                    (expr))))   ; recurse into expr
+</code></pre>
+<p>we hang at construction. <code>(factor)</code> calls <code>(expr)</code> calls <code>(term)</code>
+calls <code>(factor)</code> calls <code>(expr)</code>... Carp evaluates eagerly, so we
+construct an infinite loop when building the parser tree.</p>
+<p>The fix: <code>Parser.recurse</code> runs a parser via a stable static reference.
+We declare the recursive position in a top-level <code>def</code>, fill it in
+once at startup, and reference it from sub-parsers.</p>
+<pre><code class="language-clojure">(def *expr* (the (Parser Int) (Parser.placeholder)))
+
+(defn factor []
+  (Parser.alt
+    (Parser.Lexer.lexeme (Parser.Lexer.integer))
+    (Parser.Lexer.lexeme
+      (Parser.between (Parser.Lexer.symbol @&quot;(&quot;)
+                      (Parser.Lexer.symbol @&quot;)&quot;)
+                      (Parser.recurse &amp;*expr*)))))
+
+(defn term [] (chainl1 (factor) (mul-op) (factor)))
+
+(defn expr-impl []
+  (chainl1 (term) (add-op) (term)))
+
+; Init *expr* at module load.
+(def _init (do (set! *expr* (expr-impl)) 0))
+</code></pre>
+<p><code>Parser.placeholder</code> is a parser that always fails (until you <code>set!</code>
+the cell). The <code>_init</code> def has a side-effecting initializer that runs
+once.</p>
+<p>Now <code>(arith)</code> parses anything — primitives, parens, mixed precedence:</p>
+<pre><code>&quot;1 + 2&quot;             =&gt; 3
+&quot;1 + 2 * 3&quot;         =&gt; 7
+&quot;(1 + 2) * 3&quot;       =&gt; 9
+&quot;10 - 4 - 3&quot;        =&gt; 3   (left-associative)
+&quot;2 * (3 + 4) - 5&quot;   =&gt; 9
+</code></pre>
+<h2>What you've used</h2>
+<p>By the end of this tutorial you've touched all the combinators that
+most real grammars need:</p>
+<ul>
+<li><strong>Primitives</strong> — <code>byte</code>, <code>Lexer.integer</code>, <code>Lexer.symbol</code>,
+<code>Lexer.lexeme</code>, <code>Lexer.whitespace</code></li>
+<li><strong>Chaining</strong> — <code>bind</code>, <code>seq</code>, <code>map</code></li>
+<li><strong>Choice</strong> — <code>alt</code></li>
+<li><strong>Repetition</strong> — <code>many</code></li>
+<li><strong>Bracketing</strong> — <code>between</code></li>
+<li><strong>Recursion</strong> — <code>recurse</code> against a <code>placeholder</code>-initialized cell</li>
+</ul>
+<p>Look at <code>examples/arith.carp</code> for the assembled file, and at
+<code>examples/lisp.carp</code> for the same recursion pattern applied to
+s-expressions with a <code>Box</code>-recursive AST.</p>
+<h2>What's next</h2>
+<ul>
+<li>Rich error messages: <code>Parser.label &quot;&lt;name&gt;&quot; p</code> replaces the
+expected-set on failure. <code>Parser.format-error</code> renders a <code>ParseErr</code>
+to a string.</li>
+<li>Backtracking nuances: <code>Parser.try</code> lets you backtrack after a
+partially-consumed alternative. <code>Parser.string</code> is atomic by default
+and doesn't need <code>try</code>.</li>
+<li><a href="./Pitfalls.html">Pitfalls</a> covers the linear-types interactions you'll
+eventually run into.</li>
+</ul>
+
+                </div>
+            </div>
+        </div>
+    </body>
+</html>

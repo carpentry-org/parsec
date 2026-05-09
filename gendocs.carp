@@ -1,0 +1,49 @@
+(load "parsec.carp")
+(load "parsec_docs.carp")
+
+(Project.config "title" "parsec")
+(Project.config "docs-directory" "./docs/")
+(Project.config "docs-logo" "")
+(Project.config "docs-url" "https://github.com/carpentry-org/parsec")
+(Project.config "docs-styling" "../style.css")
+(Project.config "docs-prelude" "A Parsec-style parser combinator library
+for Carp.
+
+`Parser` is a closure-in-struct holding a `run` function over an input
+string and a position cursor. Build parsers from primitives
+([`byte`](./Parser.html#byte), [`satisfy`](./Parser.html#satisfy),
+[`string`](./Parser.html#string), ...), combine them with
+[`map`](./Parser.html#map), [`seq`](./Parser.html#seq),
+[`alt`](./Parser.html#alt), [`many`](./Parser.html#many), and friends,
+and run with [`parse`](./Parser.html#parse).
+
+Backtracking follows Parsec semantics: alternation only retries when
+the left branch fails *without consuming*. Wrap with
+[`try`](./Parser.html#try) for full backtracking.
+
+### Quick start
+```
+(load \"git@github.com:carpentry-org/parsec@0.1.0\")
+
+(let [p (Parser.between (Parser.byte \\[)
+                        (Parser.byte \\])
+                        (Parser.Lexer.integer))]
+  (match (Parser.parse p \"[42]\")
+    (Result.Success n) (println* &n)
+    (Result.Error e)   (IO.errorln &(Parser.format-error &e))))
+```
+
+### Modules
+- [`Parser`](./Parser.html) — primitives, combinators, entry point
+- [`Parser.UTF8`](./Parser.UTF8.html) — codepoint-level parsers
+- [`Parser.Lexer`](./Parser.Lexer.html) — common tokens (integer, identifier, ...)
+- [`Cursor`](./Cursor.html), [`ParseErr`](./ParseErr.html), [`Reply`](./Reply.html) — supporting types
+
+### Guides
+- [Tutorial](./Tutorial.html) — build an arithmetic expression parser step by step.
+- [Pitfalls](./Pitfalls.html) — concrete gotchas, ordered by how often they bite.")
+
+(save-docs Parser Cursor ParseErr Reply Tutorial Pitfalls)
+;; Carp's save-docs hardcodes the index filename as <title>_index.html.
+;; Rename to docs/index.html.
+(defn main [] (System.system "mv ./docs/parsec_index.html ./docs/index.html"))
