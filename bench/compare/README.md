@@ -42,12 +42,25 @@ best-case timings:
 
 | Grammar | Haskell Parsec | Carp parsec |
 |---|---|---|
-| kv 100 pairs | 58 µs | 33 µs |
-| kv 1000 pairs | 655 µs | 352 µs |
-| int-list 100 | 15 µs | 3.5 µs |
-| int-list 1000 | 167 µs | 35 µs |
-| sexp deep 100 | 46 µs | 52 µs |
-| sexp flat 1000 | 219 µs | 68 µs |
+| kv 100 pairs | 57 µs | 30 µs |
+| kv 1000 pairs | 660 µs | 303 µs |
+| int-list 100 | 15 µs | 3.3 µs |
+| int-list 1000 | 168 µs | 34 µs |
+| sexp deep 100 | 46 µs | 36 µs |
+| sexp flat 1000 | 219 µs | 66 µs |
 
 On a 40k-iteration combined workload, peak RSS is ~3.2 MB (Carp) vs
 ~13.6 MB (Haskell GHC).
+
+## Stdlib parse
+
+`examples/carp.carp` — a Carp source-form reader written on
+`parsec.carp` — parses the full Carp standard library (425 KB,
+692 top-level forms) and round-trips correctly. Compared against the
+compiler's own `Parsing.hs` (also Haskell parsec, GHC `-O2`) on the
+same input:
+
+| | Time | Throughput |
+|---|---|---|
+| Carp parsec (`examples/carp.carp`) | 55 ms | ~7.5 MB/s |
+| Compiler reader (`Parsing.hs`) | 258 ms | ~1.6 MB/s |

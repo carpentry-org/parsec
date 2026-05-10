@@ -23,7 +23,7 @@ the left branch fails *without consuming*. Wrap with
 
 ### Quick start
 ```
-(load \"git@github.com:carpentry-org/parsec@0.1.0\")
+(load \"git@github.com:carpentry-org/parsec@0.2.0\")
 
 (let [p (Parser.between (Parser.byte \\[)
                         (Parser.byte \\])
@@ -37,13 +37,13 @@ the left branch fails *without consuming*. Wrap with
 - [`Parser`](./Parser.html) — primitives, combinators, entry point
 - [`Parser.UTF8`](./Parser.UTF8.html) — codepoint-level parsers
 - [`Parser.Lexer`](./Parser.Lexer.html) — common tokens (integer, identifier, ...)
-- [`Cursor`](./Cursor.html), [`ParseErr`](./ParseErr.html), [`Reply`](./Reply.html) — supporting types
+- [`Cursor`](./Cursor.html), [`ParseErr`](./ParseErr.html), [`Expected`](./Expected.html), [`Reply`](./Reply.html) — supporting types
 
 ### Guides
 - [Tutorial](./Tutorial.html) — build an arithmetic expression parser step by step.
 - [Pitfalls](./Pitfalls.html) — concrete gotchas, ordered by how often they bite.")
 
-(save-docs Parser Cursor ParseErr Reply Tutorial Pitfalls)
+(save-docs Parser Cursor ParseErr Expected Reply Tutorial Pitfalls)
 ;; Carp's save-docs hardcodes the index filename as <title>_index.html.
 ;; Rename to docs/index.html.
 (defn main [] (System.system "mv ./docs/parsec_index.html ./docs/index.html"))

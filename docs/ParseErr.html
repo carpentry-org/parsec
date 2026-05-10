@@ -49,6 +49,11 @@
                             </a>
                         </li>
                         <li>
+                            <a href="Expected.html">
+                                Expected
+                            </a>
+                        </li>
+                        <li>
                             <a href="Reply.html">
                                 Reply
                             </a>
@@ -167,7 +172,7 @@ gathered from parsers that failed at that position. Render with
                         instantiate
                     </div>
                     <p class="sig">
-                        (Fn [(Ref ParseErr a)] (Ref (Array String) a))
+                        (Fn [(Ref ParseErr a)] (Ref Expected a))
                     </p>
                     <span>
                         
@@ -207,7 +212,7 @@ gathered from parsers that failed at that position. Render with
                         instantiate
                     </div>
                     <p class="sig">
-                        (Fn [Int, Int, Int, (Maybe String), (Array String)] ParseErr)
+                        (Fn [Int, Int, Int, (Maybe String), Expected] ParseErr)
                     </p>
                     <span>
                         
@@ -327,7 +332,7 @@ gathered from parsers that failed at that position. Render with
                         instantiate
                     </div>
                     <p class="sig">
-                        (Fn [ParseErr, (Array String)] ParseErr)
+                        (Fn [ParseErr, Expected] ParseErr)
                     </p>
                     <span>
                         
@@ -347,7 +352,7 @@ gathered from parsers that failed at that position. Render with
                         instantiate
                     </div>
                     <p class="sig">
-                        (Fn [(Ref ParseErr a), (Array String)] ())
+                        (Fn [(Ref ParseErr a), Expected] ())
                     </p>
                     <span>
                         
@@ -547,7 +552,7 @@ gathered from parsers that failed at that position. Render with
                         instantiate
                     </div>
                     <p class="sig">
-                        (Fn [ParseErr, (Ref (Fn [(Array String)] (Array String) a) b)] ParseErr)
+                        (Fn [ParseErr, (Ref (Fn [Expected] Expected a) b)] ParseErr)
                     </p>
                     <span>
                         

@@ -10,7 +10,7 @@ each runnable on its own.
 ## 0. setup
 
 ```clojure
-(load \"git@github.com:carpentry-org/parsec@0.1.0\")
+(load \"git@github.com:carpentry-org/parsec@0.2.0\")
 ```
 
 `Parser.parse` is strict, it succeeds only if the parser consumes the

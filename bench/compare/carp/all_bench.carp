@@ -59,15 +59,32 @@
 ; ============================================================
 
 ; --- kv pair ---
+; Leaf parsers are built once into top-level cells. The bind chain
+; references them via `Parser.recurse` so the grammar is well-built
+; (no per-parse parser construction inside continuations), mirroring
+; how GHC -O2 hoists invariant subexpressions in the Haskell `pair`.
+(def -kv-id   (the (Parser String) (Parser.placeholder)))
+(def -kv-eq   (the (Parser String) (Parser.placeholder)))
+(def -kv-int  (the (Parser Int)    (Parser.placeholder)))
+(def -kv-semi (the (Parser String) (Parser.placeholder)))
+
 (defn make-kv-pair []
-  (Parser.bind (Parser.Lexer.lexeme (Parser.Lexer.identifier))
+  (Parser.bind (Parser.recurse &-kv-id)
     (fn [name]
-      (Parser.bind (Parser.Lexer.symbol @"=")
+      (Parser.bind (Parser.recurse &-kv-eq)
         (fn [_]
-          (Parser.map (Parser.Lexer.integer)
+          (Parser.map (Parser.recurse &-kv-int)
                       (fn [n] (Pair.init @&name n))))))))
 
-(def p-kv (Parser.sep-by1 (make-kv-pair) (Parser.Lexer.symbol @";")))
+(def p-kv (the (Parser (Array (Pair String Int))) (Parser.placeholder)))
+
+(defn init-kv []
+  (do
+    (set! -kv-id   (Parser.Lexer.lexeme (Parser.Lexer.identifier)))
+    (set! -kv-eq   (Parser.Lexer.symbol @"="))
+    (set! -kv-int  (Parser.Lexer.integer))
+    (set! -kv-semi (Parser.Lexer.symbol @";"))
+    (set! p-kv     (Parser.sep-by1 (make-kv-pair) (Parser.recurse &-kv-semi)))))
 
 ; --- comma-separated integers ---
 (def p-int-list
@@ -126,6 +143,7 @@
 (defn main []
   (do
     (setup)
+    (init-kv)
     (init-sexp)
     (Bench.set-min-runs! 100)
     (println "=== Carp parsec ===")

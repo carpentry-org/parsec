@@ -179,115 +179,102 @@
 ; Numbers
 ; ----------------------------------------------------------------
 
-; Reads the textual form of a possibly-signed numeric literal, before
-; any type suffix (`b`, `l`, `f`) or fractional part. Allows hex and
-; binary bases.
-(defn raw-number-text []
-  (Parser.choice
-    [(Parser.try
-       (Parser.slice-of
-         (Parser.seq (Parser.string @"0x")
-                     (Parser.take-while1 (fn [c] (hex-digit? c))))))
-     (Parser.try
-       (Parser.slice-of
-         (Parser.seq (Parser.string @"0b")
-                     (Parser.take-while1 (fn [c] (bin-digit? c))))))
-     (Parser.slice-of
-       (Parser.seq (Parser.optional (Parser.byte \-))
-                   (Parser.take-while1 (fn [c] (digit? c)))))]))
+; Single-pass numeric literal recogniser. Reads sign, base prefix,
+; integer digits, optional fractional digits, optional type suffix —
+; all in one Parser.init body. Replaces a 6-way `Parser.choice` over
+; alternatives that each re-walked the digit run.
 
-(defn parse-int-text [s]
+(defn -parse-digits-from [src digit-start digit-end base negate]
+  (let-do [acc 0l
+           b-long (Long.from-int base)]
+    (for [i digit-start digit-end]
+      (set! acc (Long.+ (Long.* acc b-long)
+                        (Long.from-int (hex-value (String.char-at src i))))))
+    (if negate (Long.neg acc) acc)))
+
+(defn -is-base-digit? [c base]
   (cond
-    (and (Int.>= (String.length &s) 2)
-         (= "0x" &(String.slice &s 0 2)))
-      (let-do [acc 0l
-               digits &(String.slice &s 2 (String.length &s))
-               n (String.length digits)]
-        (for [i 0 n]
-          (set! acc (Long.+ (Long.* acc 16l)
-                            (Long.from-int (hex-value (String.char-at digits i))))))
-        (Maybe.Just acc))
-    (and (Int.>= (String.length &s) 2)
-         (= "0b" &(String.slice &s 0 2)))
-      (let-do [acc 0l
-               digits &(String.slice &s 2 (String.length &s))
-               n (String.length digits)]
-        (for [i 0 n]
-          (set! acc (Long.+ (Long.bit-shift-left acc 1l)
-                            (if (Char.= (String.char-at digits i) \1) 1l 0l))))
-        (Maybe.Just acc))
-    (Long.from-string &s)))
-
-(defn integer-p []
-  (Parser.bind (raw-number-text)
-    (fn [s]
-      (match (parse-int-text @&s)
-        (Maybe.Just n)  (Parser.pure (Carp.Int (Long.to-int n)))
-        (Maybe.Nothing) (Parser.fail @"integer")))))
-
-(defn byte-p []
-  (Parser.bind (raw-number-text)
-    (fn [s]
-      (Parser.bind (Parser.byte \b)
-        (fn [_]
-          (match (parse-int-text @&s)
-            (Maybe.Just n)  (Parser.pure (Carp.Byt (Byte.from-int (Long.to-int n))))
-            (Maybe.Nothing) (Parser.fail @"byte")))))))
-
-(defn long-p []
-  (Parser.bind (raw-number-text)
-    (fn [s]
-      (Parser.bind (Parser.byte \l)
-        (fn [_]
-          (match (parse-int-text @&s)
-            (Maybe.Just n)  (Parser.pure (Carp.Lng n))
-            (Maybe.Nothing) (Parser.fail @"long")))))))
-
-(defn float-no-period-p []
-  (Parser.bind (raw-number-text)
-    (fn [s]
-      (Parser.bind (Parser.byte \f)
-        (fn [_]
-          (match (Double.from-string &s)
-            (Maybe.Just d)  (Parser.pure (Carp.Flt (Double.to-float d)))
-            (Maybe.Nothing) (Parser.fail @"float")))))))
-
-(defn float-p []
-  (Parser.bind (Parser.slice-of
-                 (Parser.seq
-                   (Parser.optional (Parser.byte \-))
-                   (Parser.seq
-                     (Parser.take-while1 (fn [c] (digit? c)))
-                     (Parser.seq (Parser.byte \.)
-                                 (Parser.take-while1 (fn [c] (digit? c)))))))
-    (fn [s]
-      (Parser.bind (Parser.byte \f)
-        (fn [_]
-          (match (Double.from-string &s)
-            (Maybe.Just d)  (Parser.pure (Carp.Flt (Double.to-float d)))
-            (Maybe.Nothing) (Parser.fail @"float")))))))
-
-(defn double-p []
-  (Parser.bind (Parser.slice-of
-                 (Parser.seq
-                   (Parser.optional (Parser.byte \-))
-                   (Parser.seq
-                     (Parser.take-while1 (fn [c] (digit? c)))
-                     (Parser.seq (Parser.byte \.)
-                                 (Parser.take-while1 (fn [c] (digit? c)))))))
-    (fn [s]
-      (match (Double.from-string &s)
-        (Maybe.Just d)  (Parser.pure (Carp.Dbl d))
-        (Maybe.Nothing) (Parser.fail @"double")))))
+    (Int.= base 16) (hex-digit? c)
+    (Int.= base 2)  (bin-digit? c)
+    (digit? c)))
 
 (defn number-p []
-  (Parser.choice
-    [(Parser.try (float-p))
-     (Parser.try (float-no-period-p))
-     (Parser.try (byte-p))
-     (Parser.try (double-p))
-     (Parser.try (long-p))
-     (integer-p)]))
+  (Parser.init (fn [src len cur]
+    (let-do [start @(Cursor.pos cur)
+             pos start
+             negate false]
+      (when (and (Int.< pos len)
+                 (Char.= (String.char-at src pos) \-))
+        (do (set! negate true)
+            (set! pos (Int.inc pos))))
+      (let-do [base 10
+               digit-start pos]
+        (when (and (Int.<= (Int.+ pos 2) len)
+                   (Char.= (String.char-at src pos) \0))
+          (let [c1 (String.char-at src (Int.inc pos))]
+            (cond
+              (Char.= c1 \x)
+                (do (set! base 16)
+                    (set! pos (Int.+ pos 2))
+                    (set! digit-start pos))
+              (Char.= c1 \b)
+                (do (set! base 2)
+                    (set! pos (Int.+ pos 2))
+                    (set! digit-start pos))
+              ())))
+        (let-do [int-end pos]
+          (while-do (and (Int.< int-end len)
+                         (-is-base-digit? (String.char-at src int-end) base))
+            (set! int-end (Int.inc int-end)))
+          (set! pos int-end)
+          (if (Int.= pos digit-start)
+            (Reply.ErrEmpty (ParseErr.expected-at cur @"number"))
+            (let-do [int-value (-parse-digits-from src digit-start int-end base negate)
+                     next-c (if (Int.< pos len) (String.char-at src pos) \space)]
+              (cond
+                ; ".digits" → Double, optionally with trailing 'f' for Float
+                (Char.= next-c \.)
+                  (let-do [frac-start (Int.inc pos)
+                           frac-end frac-start]
+                    (while-do (and (Int.< frac-end len)
+                                   (digit? (String.char-at src frac-end)))
+                      (set! frac-end (Int.inc frac-end)))
+                    (if (Int.= frac-end frac-start)
+                      (Reply.ErrConsumed (ParseErr.expected-at cur @"fractional digits"))
+                      (let-do [post frac-end
+                               is-float false]
+                        (when (and (Int.< post len)
+                                   (Char.= (String.char-at src post) \f))
+                          (do (set! is-float true)
+                              (set! post (Int.inc post))))
+                        (let [num-text (String.byte-slice src start frac-end)]
+                          (match (Double.from-string &num-text)
+                            (Maybe.Just d)
+                              (Reply.OkConsumed
+                                (if is-float
+                                  (Carp.Flt (Double.to-float d))
+                                  (Carp.Dbl d))
+                                (Cursor.advance-by cur (Int.- post start) false))
+                            (Maybe.Nothing)
+                              (Reply.ErrConsumed
+                                (ParseErr.expected-at cur
+                                  (if is-float @"float" @"double"))))))))
+                (Char.= next-c \b)
+                  (Reply.OkConsumed (Carp.Byt (Byte.from-int (Long.to-int int-value)))
+                                    (Cursor.advance-by cur (Int.- (Int.inc pos) start) false))
+                (Char.= next-c \l)
+                  (Reply.OkConsumed (Carp.Lng int-value)
+                                    (Cursor.advance-by cur (Int.- (Int.inc pos) start) false))
+                (Char.= next-c \f)
+                  (let [num-text (String.byte-slice src start pos)]
+                    (match (Double.from-string &num-text)
+                      (Maybe.Just d)
+                        (Reply.OkConsumed (Carp.Flt (Double.to-float d))
+                                          (Cursor.advance-by cur (Int.- (Int.inc pos) start) false))
+                      (Maybe.Nothing)
+                        (Reply.ErrConsumed (ParseErr.expected-at cur @"float"))))
+                (Reply.OkConsumed (Carp.Int (Long.to-int int-value))
+                                  (Cursor.advance-by cur (Int.- pos start) false)))))))))))
 
 ; ----------------------------------------------------------------
 ; Strings
@@ -590,33 +577,91 @@
 (defn unquote-p []          (reader-macro-p @"%" @"unquote"))
 
 ; ----------------------------------------------------------------
-; The recursive entry point.
+; The recursive entry point — first-byte dispatch.
+;
+; Instead of a 17-way `Parser.choice` over `try`-wrapped alternatives
+; (each of which would also re-allocate `ParseErr`s for the failed
+; tries), we peek the next byte and route directly to the correct
+; sub-parser, all of which live in pre-built cells.
 ; ----------------------------------------------------------------
 
-(defn carp-form-p []
-  (Parser.choice
-    [; reader macros (longest first)
-     (Parser.try (unquote-splicing-p))
-     (Parser.try (unquote-p))
-     (Parser.try (ref-p))
-     (Parser.try (deref-p))
-     (Parser.try (copy-p))
-     (Parser.try (quote-p))
-     (Parser.try (quasiquote-p))
-     ; compound
-     (Parser.try (static-array-p))
-     (list-p)
-     (array-p)
-     (dict-p)
-     ; atoms
-     (Parser.try (number-p))
-     (Parser.try (raw-string-p))
-     (Parser.try (pattern-p))
-     (string-p)
-     (char-p)
-     (symbol-p)]))
+(def *list-cell*           (the (Parser Carp) (Parser.placeholder)))
+(def *array-cell*          (the (Parser Carp) (Parser.placeholder)))
+(def *dict-cell*           (the (Parser Carp) (Parser.placeholder)))
+(def *static-array-cell*   (the (Parser Carp) (Parser.placeholder)))
+(def *string-cell*         (the (Parser Carp) (Parser.placeholder)))
+(def *raw-string-cell*     (the (Parser Carp) (Parser.placeholder)))
+(def *pattern-cell*        (the (Parser Carp) (Parser.placeholder)))
+(def *char-cell*           (the (Parser Carp) (Parser.placeholder)))
+(def *number-cell*         (the (Parser Carp) (Parser.placeholder)))
+(def *symbol-cell*         (the (Parser Carp) (Parser.placeholder)))
+(def *ref-cell*            (the (Parser Carp) (Parser.placeholder)))
+(def *deref-cell*          (the (Parser Carp) (Parser.placeholder)))
+(def *copy-cell*           (the (Parser Carp) (Parser.placeholder)))
+(def *quote-cell*          (the (Parser Carp) (Parser.placeholder)))
+(def *quasiquote-cell*     (the (Parser Carp) (Parser.placeholder)))
+(def *unquote-cell*        (the (Parser Carp) (Parser.placeholder)))
+(def *unquote-splice-cell* (the (Parser Carp) (Parser.placeholder)))
 
-(def -init-grammar (do (set! *carp* (carp-form-p)) 0))
+(defn carp-form-p []
+  (Parser.init (fn [src len cur]
+    (let [pos @(Cursor.pos cur)]
+      (if (Int.>= pos len)
+        (Reply.ErrEmpty (ParseErr.expected-at cur @"a form"))
+        (let [b (String.char-at src pos)]
+          (cond
+            (Char.= b \()  (~(Parser.run &*list-cell*)         src len cur)
+            (Char.= b \[)  (~(Parser.run &*array-cell*)        src len cur)
+            (Char.= b \{)  (~(Parser.run &*dict-cell*)         src len cur)
+            (Char.= b \$)  (~(Parser.run &*static-array-cell*) src len cur)
+            (Char.= b \&)  (~(Parser.run &*ref-cell*)          src len cur)
+            (Char.= b \~)  (~(Parser.run &*deref-cell*)        src len cur)
+            (Char.= b \@)  (~(Parser.run &*copy-cell*)         src len cur)
+            (Char.= b \')  (~(Parser.run &*quote-cell*)        src len cur)
+            (Char.= b \`)  (~(Parser.run &*quasiquote-cell*)   src len cur)
+            (Char.= b \%)
+              (if (and (Int.< (Int.inc pos) len)
+                       (Char.= (String.char-at src (Int.inc pos)) \@))
+                (~(Parser.run &*unquote-splice-cell*) src len cur)
+                (~(Parser.run &*unquote-cell*)        src len cur))
+            (Char.= b \")  (~(Parser.run &*string-cell*) src len cur)
+            (Char.= b \#)  (~(Parser.run &*pattern-cell*) src len cur)
+            (Char.= b \\)  (~(Parser.run &*char-cell*) src len cur)
+            (Char.= b \r)
+              (if (and (Int.< (Int.inc pos) len)
+                       (Char.= (String.char-at src (Int.inc pos)) \"))
+                (~(Parser.run &*raw-string-cell*) src len cur)
+                (~(Parser.run &*symbol-cell*) src len cur))
+            (or (digit? b) (Char.= b \-))
+              (let [reply (~(Parser.run &*number-cell*) src len cur)]
+                (match reply
+                  (Reply.OkConsumed v c) (Reply.OkConsumed v c)
+                  (Reply.OkEmpty v c)    (Reply.OkEmpty v c)
+                  (Reply.ErrConsumed e)  (Reply.ErrConsumed e)
+                  (Reply.ErrEmpty _)     (~(Parser.run &*symbol-cell*) src len cur)))
+            (~(Parser.run &*symbol-cell*) src len cur))))))))
+
+(def -init-grammar
+  (do
+    (set! *list-cell*           (list-p))
+    (set! *array-cell*          (array-p))
+    (set! *dict-cell*           (dict-p))
+    (set! *static-array-cell*   (static-array-p))
+    (set! *string-cell*         (string-p))
+    (set! *raw-string-cell*     (raw-string-p))
+    (set! *pattern-cell*        (pattern-p))
+    (set! *char-cell*           (char-p))
+    (set! *number-cell*         (number-p))
+    (set! *symbol-cell*         (symbol-p))
+    (set! *ref-cell*            (ref-p))
+    (set! *deref-cell*          (deref-p))
+    (set! *copy-cell*           (copy-p))
+    (set! *quote-cell*          (quote-p))
+    (set! *quasiquote-cell*     (quasiquote-p))
+    (set! *unquote-cell*        (unquote-p))
+    (set! *unquote-splice-cell* (unquote-splicing-p))
+    (set! *carp* (carp-form-p))
+    0))
 
 ; Top-level: leading whitespace, then a single form, then trailing
 ; whitespace (so `Parser.parse` is satisfied with the whole input).

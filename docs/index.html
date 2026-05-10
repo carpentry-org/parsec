@@ -45,6 +45,11 @@
                                 </a>
                             </li>
                             <li>
+                                <a href="Expected.html">
+                                    Expected
+                                </a>
+                            </li>
+                            <li>
                                 <a href="Reply.html">
                                     Reply
                                 </a>
@@ -79,7 +84,7 @@ and run with <a href="./Parser.html#parse"><code>parse</code></a>.</p>
 the left branch fails <em>without consuming</em>. Wrap with
 <a href="./Parser.html#try"><code>try</code></a> for full backtracking.</p>
 <h3>Quick start</h3>
-<pre><code>(load &quot;git@github.com:carpentry-org/parsec@0.1.0&quot;)
+<pre><code>(load &quot;git@github.com:carpentry-org/parsec@0.2.0&quot;)
 
 (let [p (Parser.between (Parser.byte \[)
                         (Parser.byte \])
@@ -93,7 +98,7 @@ the left branch fails <em>without consuming</em>. Wrap with
 <li><a href="./Parser.html"><code>Parser</code></a> — primitives, combinators, entry point</li>
 <li><a href="./Parser.UTF8.html"><code>Parser.UTF8</code></a> — codepoint-level parsers</li>
 <li><a href="./Parser.Lexer.html"><code>Parser.Lexer</code></a> — common tokens (integer, identifier, ...)</li>
-<li><a href="./Cursor.html"><code>Cursor</code></a>, <a href="./ParseErr.html"><code>ParseErr</code></a>, <a href="./Reply.html"><code>Reply</code></a> — supporting types</li>
+<li><a href="./Cursor.html"><code>Cursor</code></a>, <a href="./ParseErr.html"><code>ParseErr</code></a>, <a href="./Expected.html"><code>Expected</code></a>, <a href="./Reply.html"><code>Reply</code></a> — supporting types</li>
 </ul>
 <h3>Guides</h3>
 <ul>

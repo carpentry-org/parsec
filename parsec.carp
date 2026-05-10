@@ -5,7 +5,7 @@
 ## Installation
 
 ```
-(load \"git@github.com:carpentry-org/parsec@0.1.0\")
+(load \"git@github.com:carpentry-org/parsec@0.2.0\")
 ```
 
 ## Usage
@@ -53,6 +53,47 @@ instead. Used by UTF-8 codepoint parsers.")
                    (Int.inc @(Cursor.col cur)))))
 )
 
+(doc Expected "is the set of labels carried by a `ParseErr`. The
+common case (a single failing primitive) uses `One` to skip a
+1-element `Array` allocation; merged failures collected by `choice`
+use `Many`.")
+(deftype Expected
+  (One  [String])
+  (Many [(Array String)]))
+
+(defmodule Expected
+  (doc empty "is the empty expected-set.")
+  (defn empty [] (Expected.Many []))
+
+  (doc to-array "materializes an `Expected` as an `Array String`.
+Allocates a 1-element array for the `One` case.")
+  (defn to-array [e]
+    (match-ref e
+      (One s)  [@s]
+      (Many a) @a))
+
+  (doc length "number of labels in the set.")
+  (defn length [e]
+    (match-ref e
+      (One _)  1
+      (Many a) (Array.length a)))
+
+  (doc append-into "drains the labels in `e` onto the end of `acc`,
+returning the new array. Used by `Parser.choice` to accumulate
+labels across failed alternatives without going through
+`to-array`'s allocation in the `One` case.")
+  (defn append-into [acc e]
+    (match-ref e
+      (One s)
+        (Array.push-back acc @s)
+      (Many a)
+        (let-do [out acc
+                 n (Array.length a)]
+          (for [j 0 n]
+            (set! out (Array.push-back out @(Array.unsafe-nth a j))))
+          out)))
+)
+
 (doc ParseErr "is a parser failure carrying byte/line/column position,
 an optional `unexpected` token, and an `expected` set of labels
 gathered from parsers that failed at that position. Render with
@@ -62,25 +103,26 @@ gathered from parsers that failed at that position. Render with
    line       Int
    col        Int
    unexpected (Maybe String)
-   expected   (Array String)])
+   expected   Expected])
 
 (defmodule ParseErr
   (doc empty-at "creates a `ParseErr` at `cur` with no labels.")
   (defn empty-at [cur]
     (ParseErr.init @(Cursor.pos cur) @(Cursor.line cur) @(Cursor.col cur)
-                   (Maybe.Nothing) []))
+                   (Maybe.Nothing) (Expected.empty)))
 
   (doc expected-at "creates a `ParseErr` at `cur` with one expected label.")
   (defn expected-at [cur lbl]
     (ParseErr.init @(Cursor.pos cur) @(Cursor.line cur) @(Cursor.col cur)
-                   (Maybe.Nothing) [lbl]))
+                   (Maybe.Nothing) (Expected.One lbl)))
 
   (hidden merge)
   (doc merge "merges two `ParseErr`s by unioning their expected
 sets. Position is taken from `b`.")
   (defn merge [a b]
-    (let [exp (Array.concat &[@(ParseErr.expected &a)
-                              @(ParseErr.expected &b)])
+    (let [exp (Expected.Many
+                (Array.concat &[(Expected.to-array (ParseErr.expected &a))
+                                (Expected.to-array (ParseErr.expected &b))]))
           unx (match @(ParseErr.unexpected &b)
                 (Maybe.Just s)  (Maybe.Just s)
                 (Maybe.Nothing) @(ParseErr.unexpected &a))]
@@ -208,6 +250,67 @@ value.")
               (Reply.ErrConsumed e)    (Reply.ErrConsumed e)
               (Reply.ErrEmpty e)       (Reply.ErrEmpty e)))))))
 
+  (doc bind-result "runs `p`, then applies `f` to its value and the
+cursor *after* `p`. `f` returns a `(Result b ParseErr)` directly,
+avoiding a per-parse `Parser.pure`/`Parser.fail` rebuild that the
+equivalent `bind` formulation would do. The cursor argument lets `f`
+build a `ParseErr` at the right position when it returns
+`Result.Error`.")
+  (defn bind-result [p f]
+    (Parser.init (fn [src len cur]
+      (match (~(Parser.run &p) src len cur)
+        (Reply.ErrEmpty e)    (Reply.ErrEmpty e)
+        (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+        (Reply.OkConsumed v c)
+          (match (f v &c)
+            (Result.Success r) (Reply.OkConsumed r c)
+            (Result.Error e)   (Reply.ErrConsumed e))
+        (Reply.OkEmpty v c)
+          (match (f v &c)
+            (Result.Success r) (Reply.OkEmpty r c)
+            (Result.Error e)   (Reply.ErrEmpty e))))))
+
+  (doc then "runs `p` then `q`, discarding `p`'s value and returning
+`q`'s. Equivalent to `(bind p (fn [_] q))` but does not allocate the
+continuation closure per parse.")
+  (defn then [p q]
+    (Parser.init (fn [src len cur]
+      (match (~(Parser.run &p) src len cur)
+        (Reply.ErrEmpty e)    (Reply.ErrEmpty e)
+        (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+        (Reply.OkConsumed _ c1)
+          (match (~(Parser.run &q) src len &c1)
+            (Reply.OkConsumed v c2) (Reply.OkConsumed v c2)
+            (Reply.OkEmpty v c2)    (Reply.OkConsumed v c2)
+            (Reply.ErrConsumed e)   (Reply.ErrConsumed e)
+            (Reply.ErrEmpty e)      (Reply.ErrConsumed e))
+        (Reply.OkEmpty _ c1)
+          (match (~(Parser.run &q) src len &c1)
+            (Reply.OkConsumed v c2) (Reply.OkConsumed v c2)
+            (Reply.OkEmpty v c2)    (Reply.OkEmpty v c2)
+            (Reply.ErrConsumed e)   (Reply.ErrConsumed e)
+            (Reply.ErrEmpty e)      (Reply.ErrEmpty e))))))
+
+  (doc before "runs `p` then `q`, returning `p`'s value and discarding
+`q`'s. The mirror image of `then`.")
+  (defn before [p q]
+    (Parser.init (fn [src len cur]
+      (match (~(Parser.run &p) src len cur)
+        (Reply.ErrEmpty e)    (Reply.ErrEmpty e)
+        (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+        (Reply.OkConsumed v c1)
+          (match (~(Parser.run &q) src len &c1)
+            (Reply.OkConsumed _ c2) (Reply.OkConsumed v c2)
+            (Reply.OkEmpty _ c2)    (Reply.OkConsumed v c2)
+            (Reply.ErrConsumed e)   (Reply.ErrConsumed e)
+            (Reply.ErrEmpty e)      (Reply.ErrConsumed e))
+        (Reply.OkEmpty v c1)
+          (match (~(Parser.run &q) src len &c1)
+            (Reply.OkConsumed _ c2) (Reply.OkConsumed v c2)
+            (Reply.OkEmpty _ c2)    (Reply.OkEmpty v c2)
+            (Reply.ErrConsumed e)   (Reply.ErrConsumed e)
+            (Reply.ErrEmpty e)      (Reply.ErrEmpty e))))))
+
   (doc alt "if `p` fails without consuming, runs `q` from the same
 cursor. If `p` consumes anything, no backtrack — wrap `p` in `try`
 to allow backtracking.")
@@ -298,7 +401,7 @@ the real parser before parsing. Companion to `recurse`.")
                                          @(ParseErr.line &e)
                                          @(ParseErr.col &e)
                                          @(ParseErr.unexpected &e)
-                                         [@&name]))))))
+                                         (Expected.One @&name)))))))
 
   (doc string "matches the literal string `s` byte-for-byte.
 Atomic: on partial mismatch, fails empty (no consumed failure
@@ -573,20 +676,18 @@ their expected sets. A consumed failure of any parser short-circuits
               (do (set! result (Reply.ErrConsumed e))
                   (set! going false))
             (Reply.ErrEmpty e)
-              (let-do [exp (ParseErr.expected &e)
-                       m (Array.length exp)]
+              (do
                 (set! err-pos  @(ParseErr.pos  &e))
                 (set! err-line @(ParseErr.line &e))
                 (set! err-col  @(ParseErr.col  &e))
                 (match @(ParseErr.unexpected &e)
                   (Maybe.Just s)  (set! err-unx (Maybe.Just s))
                   (Maybe.Nothing) ())
-                (for [j 0 m]
-                  (set! labels (Array.push-back labels
-                                                @(Array.unsafe-nth exp j))))))
+                (set! labels (Expected.append-into labels (ParseErr.expected &e)))))
           (set! i (Int.inc i)))
         (if going
-          (Reply.ErrEmpty (ParseErr.init err-pos err-line err-col err-unx labels))
+          (Reply.ErrEmpty (ParseErr.init err-pos err-line err-col err-unx
+                                         (Expected.Many labels)))
           result)))))
 
   (doc slice-of "runs `p`; on success, replaces `p`'s value with
@@ -796,24 +897,7 @@ tab, CR, LF). Always succeeds; the result is unit.")
                   (fn [_] ())))
 
     (doc lexeme "runs `p`, then skips trailing whitespace. Returns `p`'s value.")
-    (defn lexeme [p]
-      (let [ws (whitespace)]
-        (Parser.init (fn [src len cur]
-          (match (~(Parser.run &p) src len cur)
-            (Reply.ErrEmpty e)    (Reply.ErrEmpty e)
-            (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-            (Reply.OkConsumed v c1)
-              (match (~(Parser.run &ws) src len &c1)
-                (Reply.OkConsumed _ c2) (Reply.OkConsumed v c2)
-                (Reply.OkEmpty _ c2)    (Reply.OkConsumed v c2)
-                (Reply.ErrConsumed e)   (Reply.ErrConsumed e)
-                (Reply.ErrEmpty _)      (Reply.OkConsumed v c1))
-            (Reply.OkEmpty v c1)
-              (match (~(Parser.run &ws) src len &c1)
-                (Reply.OkConsumed _ c2) (Reply.OkConsumed v c2)
-                (Reply.OkEmpty _ c2)    (Reply.OkEmpty v c2)
-                (Reply.ErrConsumed e)   (Reply.ErrConsumed e)
-                (Reply.ErrEmpty _)      (Reply.OkEmpty v c1)))))))
+    (defn lexeme [p] (Parser.before p (whitespace)))
 
     (doc symbol "matches the literal string `s`, then skips trailing whitespace.")
     (defn symbol [s] (lexeme (Parser.string s)))
@@ -881,15 +965,19 @@ Uses `StringBuf` internally.")
           (do (StringBuf.append-str &sb ": unexpected ")
               (StringBuf.append-str &sb s))
         (Maybe.Nothing) ())
-      (let-do [exp (ParseErr.expected e)
-               n (Array.length exp)]
-        (when (Int.> n 0)
-          (do
-            (StringBuf.append-str &sb "; expected: ")
-            (for [i 0 n]
+      (match-ref (ParseErr.expected e)
+        (Expected.One s)
+          (do (StringBuf.append-str &sb "; expected: ")
+              (StringBuf.append-str &sb s))
+        (Expected.Many a)
+          (let [n (Array.length a)]
+            (when (Int.> n 0)
               (do
-                (when (Int.> i 0) (StringBuf.append-str &sb ", "))
-                (StringBuf.append-str &sb (Array.unsafe-nth exp i)))))))
+                (StringBuf.append-str &sb "; expected: ")
+                (for [i 0 n]
+                  (do
+                    (when (Int.> i 0) (StringBuf.append-str &sb ", "))
+                    (StringBuf.append-str &sb (Array.unsafe-nth a i))))))))
       (let [s (StringBuf.to-string &sb)]
         (do (StringBuf.delete sb) s))))
 

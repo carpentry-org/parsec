@@ -49,6 +49,11 @@
                             </a>
                         </li>
                         <li>
+                            <a href="Expected.html">
+                                Expected
+                            </a>
+                        </li>
+                        <li>
                             <a href="Reply.html">
                                 Reply
                             </a>
@@ -73,7 +78,7 @@
                 <div class="module-description">
                     <p>is a Parsec-style parser combinator library for Carp.</p>
 <h2>Installation</h2>
-<pre><code>(load &quot;git@github.com:carpentry-org/parsec@0.1.0&quot;)
+<pre><code>(load &quot;git@github.com:carpentry-org/parsec@0.2.0&quot;)
 </code></pre>
 <h2>Usage</h2>
 <pre><code>(let [p (Parser.seq (Parser.byte \h) (Parser.byte \i))]
@@ -173,6 +178,27 @@ to allow backtracking.</p>
                     </p>
                 </div>
                 <div class="binder">
+                    <a class="anchor" href="#before">
+                        <h3 id="before">
+                            before
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Parser a), (Parser b)] (Parser a))
+                    </p>
+                    <pre class="args">
+                        (before p q)
+                    </pre>
+                    <p class="doc">
+                        <p>runs <code>p</code> then <code>q</code>, returning <code>p</code>'s value and discarding
+<code>q</code>'s. The mirror image of <code>then</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
                     <a class="anchor" href="#between">
                         <h3 id="between">
                             between
@@ -213,6 +239,31 @@ consumed failures.</p>
                         <p>is the monadic bind. Runs <code>p</code>, then runs <code>(f v)</code> where
 <code>v</code> is <code>p</code>'s value. The continuation parser is computed from the
 value.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#bind-result">
+                        <h3 id="bind-result">
+                            bind-result
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Parser a), (Fn [a, (Ref Cursor b)] (Result c ParseErr))] (Parser c))
+                    </p>
+                    <pre class="args">
+                        (bind-result p f)
+                    </pre>
+                    <p class="doc">
+                        <p>runs <code>p</code>, then applies <code>f</code> to its value and the
+cursor <em>after</em> <code>p</code>. <code>f</code> returns a <code>(Result b ParseErr)</code> directly,
+avoiding a per-parse <code>Parser.pure</code>/<code>Parser.fail</code> rebuild that the
+equivalent <code>bind</code> formulation would do. The cursor argument lets <code>f</code>
+build a <code>ParseErr</code> at the right position when it returns
+<code>Result.Error</code>.</p>
 
                     </p>
                 </div>
@@ -971,6 +1022,28 @@ a <code>String</code>.</p>
                     </pre>
                     <p class="doc">
                         <p>like <code>take-while</code>, but requires at least one byte to match.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#then">
+                        <h3 id="then">
+                            then
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Parser a), (Parser b)] (Parser b))
+                    </p>
+                    <pre class="args">
+                        (then p q)
+                    </pre>
+                    <p class="doc">
+                        <p>runs <code>p</code> then <code>q</code>, discarding <code>p</code>'s value and returning
+<code>q</code>'s. Equivalent to <code>(bind p (fn [_] q))</code> but does not allocate the
+continuation closure per parse.</p>
 
                     </p>
                 </div>

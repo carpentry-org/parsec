@@ -241,7 +241,9 @@
                           (Parser.satisfy (fn [c] (and (Char.>= c \0) (Char.<= c \9)))
                                           @"raw"))
                          "x")
-      (Result.Error e) (= "a digit" (Array.unsafe-nth (ParseErr.expected &e) 0))
+      (Result.Error e)
+        (let [arr (Expected.to-array (ParseErr.expected &e))]
+          (= "a digit" (Array.unsafe-nth &arr 0)))
       _ false)
     "label replaces the expected-set on empty failure")
 
@@ -691,7 +693,7 @@
     (match (Parser.parse
              (Parser.alt (Parser.byte \a) (Parser.byte \b))
              "z")
-      (Result.Error e) (= 2 (Array.length (ParseErr.expected &e)))
+      (Result.Error e) (= 2 (Expected.length (ParseErr.expected &e)))
       _ false)
     "expected-set: alt of two failed empties merges expected labels (size 2)")
 
@@ -701,10 +703,9 @@
                          (Parser.label @"beta"  (Parser.byte \b)))
              "z")
       (Result.Error e)
-        (let [exp (ParseErr.expected &e)]
-          (and (= 2 (Array.length exp))
-               (and (String.contains-string? &(Parser.format-error &e) "alpha")
-                    (String.contains-string? &(Parser.format-error &e) "beta"))))
+        (and (= 2 (Expected.length (ParseErr.expected &e)))
+             (and (String.contains-string? &(Parser.format-error &e) "alpha")
+                  (String.contains-string? &(Parser.format-error &e) "beta")))
       _ false)
     "expected-set: labeled alts merge into the human-readable error")
 
