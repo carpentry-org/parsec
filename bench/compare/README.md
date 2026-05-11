@@ -51,16 +51,3 @@ best-case timings:
 
 On a 40k-iteration combined workload, peak RSS is ~3.2 MB (Carp) vs
 ~13.6 MB (Haskell GHC).
-
-## Stdlib parse
-
-`examples/carp.carp` — a Carp source-form reader written on
-`parsec.carp` — parses the full Carp standard library (425 KB,
-692 top-level forms) and round-trips correctly. Compared against the
-compiler's own `Parsing.hs` (also Haskell parsec, GHC `-O2`) on the
-same input:
-
-| | Time | Throughput |
-|---|---|---|
-| Carp parsec (`examples/carp.carp`) | 55 ms | ~7.5 MB/s |
-| Compiler reader (`Parsing.hs`) | 258 ms | ~1.6 MB/s |
