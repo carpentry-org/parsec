@@ -40,6 +40,7 @@ jobs:
           angler $(find . -name '*.carp' \
             -not -path './out/*' \
             -not -path './docs/*' \
+            -not -path './.carp-src/*' \
             -not -path './test/parsec.carp')
 
       - name: Generate docs
