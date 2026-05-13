@@ -415,8 +415,8 @@ mid-string).")
             (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))
             (let-do [matches true]
               (for [i 0 slen]
-                (when (not (Char.= (String.char-at &s i)
-                                   (String.char-at src (Int.+ pos i))))
+                (unless (Char.= (String.char-at &s i)
+                                (String.char-at src (Int.+ pos i)))
                   (set! matches false)))
               (if matches
                 (let-do [c @cur]
@@ -923,10 +923,10 @@ digits as an `Int`. Fused into a single closure.")
       (Parser.init (fn [src len cur]
         (let-do [c @cur
                  negate? false]
-          (when (and (Int.< @(Cursor.pos &c) len)
-                     (Char.= (String.char-at src @(Cursor.pos &c)) \-))
-            (do (set! c (Cursor.advance &c \-))
-                (set! negate? true)))
+          (when-do (and (Int.< @(Cursor.pos &c) len)
+                        (Char.= (String.char-at src @(Cursor.pos &c)) \-))
+            (set! c (Cursor.advance &c \-))
+            (set! negate? true))
           (let [digit-start @(Cursor.pos &c)
                 c2          (scan-digits src len &c)]
             (if (Int.> @(Cursor.pos &c2) digit-start)
@@ -971,15 +971,15 @@ Uses `StringBuf` internally.")
               (StringBuf.append-str &sb s))
         (Expected.Many a)
           (let [n (Array.length a)]
-            (when (Int.> n 0)
-              (do
-                (StringBuf.append-str &sb "; expected: ")
-                (for [i 0 n]
-                  (do
-                    (when (Int.> i 0) (StringBuf.append-str &sb ", "))
-                    (StringBuf.append-str &sb (Array.unsafe-nth a i))))))))
-      (let [s (StringBuf.to-string &sb)]
-        (do (StringBuf.delete sb) s))))
+            (when-do (Int.> n 0)
+              (StringBuf.append-str &sb "; expected: ")
+              (for [i 0 n]
+                (do
+                  (when (Int.> i 0) (StringBuf.append-str &sb ", "))
+                  (StringBuf.append-str &sb (Array.unsafe-nth a i)))))))
+      (let-do [s (StringBuf.to-string &sb)]
+        (StringBuf.delete sb)
+        s)))
 
   (doc parse "runs `p` over the entire input. Strict: fails if `p`
 doesn't consume all of `src`. Returns `(Result a ParseErr)`.")
