@@ -21,7 +21,9 @@
 `line`, and `col`. Newline-aware: `\\n` advances `line` and resets
 `col` to 1. Users mostly see `Cursor` values via `ParseErr` for error
 reporting.")
-(deftype Cursor [pos Int line Int col Int])
+(deftype Cursor [pos Int
+                 line Int
+                 col Int])
 (derive Cursor =)
 
 (defmodule Cursor
@@ -85,7 +87,11 @@ an optional `unexpected` token, and an `expected` set of labels
 gathered from parsers that failed at that position. Render with
 `Parser.format-error`.")
 (deftype ParseErr
-  [pos Int line Int col Int unexpected (Maybe String) expected Expected])
+  [pos Int
+   line Int
+   col Int
+   unexpected (Maybe String)
+   expected Expected])
 
 (defmodule ParseErr
   (doc empty-at "creates a `ParseErr` at `cur` with no labels.")
