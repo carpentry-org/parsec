@@ -19,9 +19,10 @@
   (Parser.alt
     (Parser.Lexer.lexeme (Parser.Lexer.integer))
     (Parser.Lexer.lexeme
-      (Parser.between (Parser.Lexer.symbol @"(")
-                      (Parser.Lexer.symbol @")")
-                      (Parser.recurse &*expr*)))))
+      (Parser.between
+        (Parser.Lexer.symbol @"(")
+        (Parser.Lexer.symbol @")")
+        (Parser.recurse &*expr*)))))
 
 ; ----------------------------------------------------------------
 ; left-associative fold of `factor (op factor)*` into an Int.
@@ -45,10 +46,10 @@
     (fn [outer]
       (let [h @(Pair.a &outer)
             pairs (Pair.b &outer)]
-        (Array.reduce &(fn [acc p]
-                         (apply-op acc @(Pair.a p) @(Pair.b p)))
-                      h
-                      pairs)))))
+        (Array.reduce
+          &(fn [acc p] (apply-op acc @(Pair.a p) @(Pair.b p)))
+          h
+          pairs)))))
 
 ; ----------------------------------------------------------------
 ; term = factor ('*' factor | '/' factor)*
@@ -58,8 +59,7 @@
     (Parser.map (Parser.Lexer.symbol @"*") (fn [_] \*))
     (Parser.map (Parser.Lexer.symbol @"/") (fn [_] \/))))
 
-(defn term []
-  (chainl1 (factor) (mul-op) (factor)))
+(defn term [] (chainl1 (factor) (mul-op) (factor)))
 
 ; ----------------------------------------------------------------
 ; expr = term ('+' term | '-' term)*
@@ -69,8 +69,7 @@
     (Parser.map (Parser.Lexer.symbol @"+") (fn [_] \+))
     (Parser.map (Parser.Lexer.symbol @"-") (fn [_] \-))))
 
-(defn expr-impl []
-  (chainl1 (term) (add-op) (term)))
+(defn expr-impl [] (chainl1 (term) (add-op) (term)))
 
 ; Init the cell *expr* once, before any parsing.
 (def -init-arith (do (set! *expr* (expr-impl)) 0))
@@ -79,24 +78,27 @@
 ; Top-level: skip leading whitespace, then expr.
 ; ----------------------------------------------------------------
 (defn arith []
-  (Parser.bind (Parser.Lexer.whitespace)
-               (fn [_] (Parser.recurse &*expr*))))
+  (Parser.bind (Parser.Lexer.whitespace) (fn [_] (Parser.recurse &*expr*))))
 
 (defn run-on [input]
   (do
     (IO.println &(fmt "input: %s" input))
     (match (Parser.parse (arith) input)
       (Result.Success n) (IO.println &(fmt "  = %d" n))
-      (Result.Error e)   (IO.println &(fmt "  err: %s" &(Parser.format-error &e))))))
+      (Result.Error e) (IO.println &(fmt "  err: %s" &(Parser.format-error &e))))))
 
 (defn main []
   (do
     (run-on "1 + 2")
     (run-on "1 + 2 * 3")
     (run-on "(1 + 2) * 3")
-    (run-on "10 - 4 - 3")           ; left-associative: ((10 - 4) - 3) = 3
-    (run-on "100 / 10 / 2")         ; left-associative: ((100 / 10) / 2) = 5
+    (run-on "10 - 4 - 3")
+    ; left-associative: ((10 - 4) - 3) = 3
+    (run-on "100 / 10 / 2")
+    ; left-associative: ((100 / 10) / 2) = 5
     (run-on "2 * (3 + 4) - 5")
     (run-on "  ( ( 1 + 2 ) * 3 + 4 ) ")
-    (run-on "1 +")                   ; trailing operator
-    (run-on "")))                    ; empty input
+    (run-on "1 +")
+    ; trailing operator
+    (run-on "")))
+; empty input

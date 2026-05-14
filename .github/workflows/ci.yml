@@ -31,6 +31,13 @@ jobs:
           (cd /tmp/angler && carp -b main.carp)
           sudo install -m 755 /tmp/angler/out/angler /usr/local/bin/
 
+      - name: Install carp-fmt
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/carpentry-org/carp-fmt /tmp/carp-fmt
+          (cd /tmp/carp-fmt && carp -b main.carp)
+          sudo install -m 755 /tmp/carp-fmt/out/carp-fmt /usr/local/bin/
+
       - name: Lint
         run: |
           # test/parsec.carp uses `\é` (multi-byte UTF-8 char literal),
@@ -41,6 +48,15 @@ jobs:
             -not -path './out/*' \
             -not -path './docs/*' \
             -not -path './.carp-src/*' \
+            -not -path './test/parsec.carp')
+
+      - name: Format check
+        run: |
+          carp-fmt --check $(find . -name '*.carp' \
+            -not -path './out/*' \
+            -not -path './docs/*' \
+            -not -path './.carp-src/*' \
+            -not -path './examples/messy.carp' \
             -not -path './test/parsec.carp')
 
       - name: Generate docs

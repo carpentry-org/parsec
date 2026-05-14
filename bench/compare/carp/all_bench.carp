@@ -10,49 +10,46 @@
 ; Inputs
 ; ============================================================
 
-(def *kv100*    @"")
-(def *kv1000*   @"")
-(def *ints100*  @"")
-(def *ints1k*   @"")
-(def *deep100*  @"")
-(def *flat1k*   @"")
+(def *kv100* @"")
+(def *kv1000* @"")
+(def *ints100* @"")
+(def *ints1k* @"")
+(def *deep100* @"")
+(def *flat1k* @"")
 
 (defn build-kv [n]
   (let-do [parts (the (Array String) [])]
-    (for [i 0 n]
-      (Array.push-back! &parts (fmt "k%d=%d" i i)))
+    (for [i 0 n] (Array.push-back! &parts (fmt "k%d=%d" i i)))
     (String.join "; " &parts)))
 
 (defn build-int-list [n]
   (let-do [parts (the (Array String) [])]
-    (for [i 0 n]
-      (Array.push-back! &parts (Int.str i)))
+    (for [i 0 n] (Array.push-back! &parts (Int.str i)))
     (String.join "," &parts)))
 
 (defn build-rep [n s]
   (let-do [parts (the (Array String) [])]
-    (for [i 0 n]
-      (Array.push-back! &parts @s))
+    (for [i 0 n] (Array.push-back! &parts @s))
     (String.concat &parts)))
 
 (defn build-deep-sexp [n]
-  (let-do [opens  (build-rep n "(")
+  (let-do [opens (build-rep n "(")
            closes (build-rep n ")")]
     (String.append &(String.append &opens "x") &closes)))
 
 (defn build-flat-sexp [n]
-  (let-do [parts (the (Array String) []) ]
+  (let-do [parts (the (Array String) [])]
     (for [i 0 n] (Array.push-back! &parts @"x"))
     (fmt "(%s)" &(String.join " " &parts))))
 
 (defn setup []
   (do
-    (set! *kv100*   (build-kv 100))
-    (set! *kv1000*  (build-kv 1000))
+    (set! *kv100* (build-kv 100))
+    (set! *kv1000* (build-kv 1000))
     (set! *ints100* (build-int-list 100))
-    (set! *ints1k*  (build-int-list 1000))
+    (set! *ints1k* (build-int-list 1000))
     (set! *deep100* (build-deep-sexp 100))
-    (set! *flat1k*  (build-flat-sexp 1000))))
+    (set! *flat1k* (build-flat-sexp 1000))))
 
 ; ============================================================
 ; Grammars
@@ -63,66 +60,65 @@
 ; references them via `Parser.recurse` so the grammar is well-built
 ; (no per-parse parser construction inside continuations), mirroring
 ; how GHC -O2 hoists invariant subexpressions in the Haskell `pair`.
-(def -kv-id   (the (Parser String) (Parser.placeholder)))
-(def -kv-eq   (the (Parser String) (Parser.placeholder)))
-(def -kv-int  (the (Parser Int)    (Parser.placeholder)))
+(def -kv-id (the (Parser String) (Parser.placeholder)))
+(def -kv-eq (the (Parser String) (Parser.placeholder)))
+(def -kv-int (the (Parser Int) (Parser.placeholder)))
 (def -kv-semi (the (Parser String) (Parser.placeholder)))
 
 (defn make-kv-pair []
-  (Parser.bind (Parser.recurse &-kv-id)
+  (Parser.bind
+    (Parser.recurse &-kv-id)
     (fn [name]
-      (Parser.bind (Parser.recurse &-kv-eq)
+      (Parser.bind
+        (Parser.recurse &-kv-eq)
         (fn [_]
-          (Parser.map (Parser.recurse &-kv-int)
-                      (fn [n] (Pair.init @&name n))))))))
+          (Parser.map (Parser.recurse &-kv-int) (fn [n] (Pair.init @&name n))))))))
 
 (def p-kv (the (Parser (Array (Pair String Int))) (Parser.placeholder)))
 
 (defn init-kv []
   (do
-    (set! -kv-id   (Parser.Lexer.lexeme (Parser.Lexer.identifier)))
-    (set! -kv-eq   (Parser.Lexer.symbol @"="))
-    (set! -kv-int  (Parser.Lexer.integer))
+    (set! -kv-id (Parser.Lexer.lexeme (Parser.Lexer.identifier)))
+    (set! -kv-eq (Parser.Lexer.symbol @"="))
+    (set! -kv-int (Parser.Lexer.integer))
     (set! -kv-semi (Parser.Lexer.symbol @";"))
-    (set! p-kv     (Parser.sep-by1 (make-kv-pair) (Parser.recurse &-kv-semi)))))
+    (set! p-kv (Parser.sep-by1 (make-kv-pair) (Parser.recurse &-kv-semi)))))
 
 ; --- comma-separated integers ---
-(def p-int-list
-  (Parser.sep-by (Parser.Lexer.integer) (Parser.byte \,)))
+(def p-int-list (Parser.sep-by (Parser.Lexer.integer) (Parser.byte \,)))
 
 ; --- s-expression ---
 (defn sym-char? [c]
-  (not (or (Char.= c \space)
-           (or (Char.= c \tab)
-               (or (Char.= c \newline)
-                   (or (Char.= c \()
-                       (Char.= c \))))))))
+  (not
+    (or
+      (Char.= c \space)
+      (or
+        (Char.= c \tab)
+        (or (Char.= c \newline) (or (Char.= c \() (Char.= c \))))))))
 
-(deftype SExp
-  (Sym [String])
-  (Lst [(Array (Box SExp))]))
+(deftype SExp (Sym [String]) (Lst [(Array (Box SExp))]))
 
 ; Pre-built recursive parser via Parser.recurse against a stable cell.
 (def *sexp* (the (Parser SExp) (Parser.placeholder)))
 
 (defn sym-p []
-  (Parser.map (Parser.Lexer.lexeme
-                (Parser.take-while1 (fn [c] (sym-char? c))))
-              (fn [s] (SExp.Sym s))))
+  (Parser.map
+    (Parser.Lexer.lexeme (Parser.take-while1 (fn [c] (sym-char? c))))
+    (fn [s] (SExp.Sym s))))
 
 (defn list-p []
   (Parser.map
     (Parser.Lexer.lexeme
-      (Parser.between (Parser.byte \()
-                      (Parser.byte \))
-                      (Parser.many (Parser.map (Parser.recurse &*sexp*)
-                                               (fn [s] (Box.init s))))))
+      (Parser.between
+        (Parser.byte \()
+        (Parser.byte \))
+        (Parser.many (Parser.map (Parser.recurse &*sexp*) (fn [s] (Box.init s))))))
     (fn [items] (SExp.Lst items))))
 
 (defn init-sexp [] (set! *sexp* (Parser.alt (sym-p) (list-p))))
 
-(def p-sexp (Parser.bind (Parser.Lexer.whitespace)
-                         (fn [_] (Parser.recurse &*sexp*))))
+(def p-sexp
+  (Parser.bind (Parser.Lexer.whitespace) (fn [_] (Parser.recurse &*sexp*))))
 
 ; ============================================================
 ; Bench helpers
@@ -133,12 +129,12 @@
         cur (Cursor.zero)]
     (ignore (~(Parser.run p) src len &cur))))
 
-(defn bench-kv-100      [] (run! &p-kv       &*kv100*))
-(defn bench-kv-1000     [] (run! &p-kv       &*kv1000*))
-(defn bench-int-100     [] (run! &p-int-list &*ints100*))
-(defn bench-int-1000    [] (run! &p-int-list &*ints1k*))
-(defn bench-sexp-deep   [] (run! &p-sexp     &*deep100*))
-(defn bench-sexp-flat   [] (run! &p-sexp     &*flat1k*))
+(defn bench-kv-100 [] (run! &p-kv &*kv100*))
+(defn bench-kv-1000 [] (run! &p-kv &*kv1000*))
+(defn bench-int-100 [] (run! &p-int-list &*ints100*))
+(defn bench-int-1000 [] (run! &p-int-list &*ints1k*))
+(defn bench-sexp-deep [] (run! &p-sexp &*deep100*))
+(defn bench-sexp-flat [] (run! &p-sexp &*flat1k*))
 
 (defn main []
   (do
@@ -147,9 +143,21 @@
     (init-sexp)
     (Bench.set-min-runs! 100)
     (println "=== Carp parsec ===")
-    (println "kv 100:")          (bench bench-kv-100)    (println "")
-    (println "kv 1000:")         (bench bench-kv-1000)   (println "")
-    (println "int-list 100:")    (bench bench-int-100)   (println "")
-    (println "int-list 1000:")   (bench bench-int-1000)  (println "")
-    (println "sexp deep 100:")   (bench bench-sexp-deep) (println "")
-    (println "sexp flat 1000:")  (bench bench-sexp-flat) (println "")))
+    (println "kv 100:")
+    (bench bench-kv-100)
+    (println "")
+    (println "kv 1000:")
+    (bench bench-kv-1000)
+    (println "")
+    (println "int-list 100:")
+    (bench bench-int-100)
+    (println "")
+    (println "int-list 1000:")
+    (bench bench-int-1000)
+    (println "")
+    (println "sexp deep 100:")
+    (bench bench-sexp-deep)
+    (println "")
+    (println "sexp flat 1000:")
+    (bench bench-sexp-flat)
+    (println "")))

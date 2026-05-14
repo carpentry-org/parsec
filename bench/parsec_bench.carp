@@ -15,23 +15,27 @@
 ; Inputs
 ; ============================================================
 
-(def *aaaa* @"")              ; 10_000 'a's
-(def *abc* @"")               ; 10_000 chars of "abcabc..."
-(def *letters* @"")           ; 10_000 letters then a digit
-(def *int-list* @"")          ; "1,2,3,...,1000"
-(def *deep-parens* @"")       ; "(((...)))" depth 100
-(def *kv-pairs* @"")          ; "k0=0; k1=1; ..." 100 pairs
+(def *aaaa* @"")
+; 10_000 'a's
+(def *abc* @"")
+; 10_000 chars of "abcabc..."
+(def *letters* @"")
+; 10_000 letters then a digit
+(def *int-list* @"")
+; "1,2,3,...,1000"
+(def *deep-parens* @"")
+; "(((...)))" depth 100
+(def *kv-pairs* @"")
+; "k0=0; k1=1; ..." 100 pairs
 
 (defn build-input [n unit]
   (let-do [parts (the (Array String) [])]
-    (for [i 0 n]
-      (Array.push-back! &parts @unit))
+    (for [i 0 n] (Array.push-back! &parts @unit))
     (String.concat &parts)))
 
 (defn build-int-list [n]
   (let-do [parts (the (Array String) [])]
-    (for [i 0 n]
-      (Array.push-back! &parts (Int.str i)))
+    (for [i 0 n] (Array.push-back! &parts (Int.str i)))
     (String.join "," &parts)))
 
 (defn build-deep-parens [n]
@@ -41,8 +45,7 @@
 
 (defn build-kv [n]
   (let-do [parts (the (Array String) [])]
-    (for [i 0 n]
-      (Array.push-back! &parts (fmt "k%d=%d" i i)))
+    (for [i 0 n] (Array.push-back! &parts (fmt "k%d=%d" i i)))
     (String.join "; " &parts)))
 
 (defn setup-inputs []
@@ -59,37 +62,35 @@
 ; ============================================================
 
 ; Char predicate as plain Carp fn.
-(defn alpha? [c] (or (and (Char.>= c \A) (Char.<= c \Z))
-                     (and (Char.>= c \a) (Char.<= c \z))))
+(defn alpha? [c]
+  (or (and (Char.>= c \A) (Char.<= c \Z)) (and (Char.>= c \a) (Char.<= c \z))))
 
 ; --- Bench targets ---
-(def p-byte-many       (Parser.many (Parser.byte \a)))
-(def p-string-many     (Parser.many (Parser.string @"abc")))
-(def p-take-while      (Parser.take-while (fn [c] (alpha? c))))
-(def p-int-list        (Parser.sep-by (Parser.Lexer.integer)
-                                      (Parser.byte \,)))
+(def p-byte-many (Parser.many (Parser.byte \a)))
+(def p-string-many (Parser.many (Parser.string @"abc")))
+(def p-take-while (Parser.take-while (fn [c] (alpha? c))))
+(def p-int-list (Parser.sep-by (Parser.Lexer.integer) (Parser.byte \,)))
 
 ; Recursive parens, sibling-function pattern.
 (sig parens-pair (Fn [] (Parser ())))
 (sig parens-content (Fn [] (Parser ())))
 (defn parens-pair []
-  (Parser.between (Parser.byte \() (Parser.byte \))
-                  (parens-content)))
+  (Parser.between (Parser.byte \() (Parser.byte \)) (parens-content)))
 (defn parens-content []
-  (Parser.alt (Parser.lazy (fn [] (parens-pair)))
-              (Parser.pure ())))
+  (Parser.alt (Parser.lazy (fn [] (parens-pair))) (Parser.pure ())))
 
 (def p-parens (parens-pair))
 
 ; kv = identifier '=' integer, separated by '; '
 (def p-kv
   (Parser.sep-by1
-    (Parser.bind (Parser.Lexer.lexeme (Parser.Lexer.identifier))
+    (Parser.bind
+      (Parser.Lexer.lexeme (Parser.Lexer.identifier))
       (fn [name]
-        (Parser.bind (Parser.Lexer.symbol @"=")
+        (Parser.bind
+          (Parser.Lexer.symbol @"=")
           (fn [_]
-            (Parser.map (Parser.Lexer.integer)
-                        (fn [n] (Pair.init @&name n)))))))
+            (Parser.map (Parser.Lexer.integer) (fn [n] (Pair.init @&name n)))))))
     (Parser.Lexer.symbol @";")))
 
 ; ============================================================
@@ -105,16 +106,15 @@
 ; Bench functions
 ; ============================================================
 
-(defn bench-byte-many   [] (run! &p-byte-many   &*aaaa*))
+(defn bench-byte-many [] (run! &p-byte-many &*aaaa*))
 (defn bench-string-many [] (run! &p-string-many &*abc*))
-(defn bench-take-while  [] (run! &p-take-while  &*letters*))
-(defn bench-int-list    [] (run! &p-int-list    &*int-list*))
-(defn bench-parens      [] (run! &p-parens      &*deep-parens*))
-(defn bench-kv          [] (run! &p-kv          &*kv-pairs*))
+(defn bench-take-while [] (run! &p-take-while &*letters*))
+(defn bench-int-list [] (run! &p-int-list &*int-list*))
+(defn bench-parens [] (run! &p-parens &*deep-parens*))
+(defn bench-kv [] (run! &p-kv &*kv-pairs*))
 
 ; --- Construction cost (build, throw away) ---
-(defn bench-build-byte-many []
-  (ignore (Parser.many (Parser.byte \a))))
+(defn bench-build-byte-many [] (ignore (Parser.many (Parser.byte \a))))
 (defn bench-build-int-list []
   (ignore (Parser.sep-by (Parser.Lexer.integer) (Parser.byte \,))))
 
@@ -122,23 +122,38 @@
 ; Main
 ; ============================================================
 
-(defn main []
-  (do
+(defn main [] (do
     (setup-inputs)
     (Bench.set-min-runs! 30)
 
     (println "=== parse cost (parser pre-built) ===")
     (println "")
 
-    (println "many byte (10k bytes):")          (bench bench-byte-many)   (println "")
-    (println "many string \"abc\" (10k bytes):") (bench bench-string-many) (println "")
-    (println "take-while alpha (10k bytes):")    (bench bench-take-while)  (println "")
-    (println "sep-by integer ',' (1000 ints):")  (bench bench-int-list)    (println "")
-    (println "deep parens (depth 100):")         (bench bench-parens)      (println "")
-    (println "kv pairs (100 entries):")          (bench bench-kv)          (println "")
+    (println "many byte (10k bytes):")
+    (bench bench-byte-many)
+    (println "")
+    (println "many string \"abc\" (10k bytes):")
+    (bench bench-string-many)
+    (println "")
+    (println "take-while alpha (10k bytes):")
+    (bench bench-take-while)
+    (println "")
+    (println "sep-by integer ',' (1000 ints):")
+    (bench bench-int-list)
+    (println "")
+    (println "deep parens (depth 100):")
+    (bench bench-parens)
+    (println "")
+    (println "kv pairs (100 entries):")
+    (bench bench-kv)
+    (println "")
 
     (println "=== construction cost ===")
     (println "")
 
-    (println "build (many (byte ...)):")            (bench bench-build-byte-many) (println "")
-    (println "build (sep-by integer (byte ,)):")    (bench bench-build-int-list)  (println "")))
+    (println "build (many (byte ...)):")
+    (bench bench-build-byte-many)
+    (println "")
+    (println "build (sep-by integer (byte ,)):")
+    (bench bench-build-int-list)
+    (println "")))

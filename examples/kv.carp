@@ -11,20 +11,19 @@
 ; One key-value pair, monadic style: capture identifier and integer,
 ; discard the '=' separator.
 (defn pair []
-  (Parser.bind (Parser.Lexer.lexeme (Parser.Lexer.identifier))
+  (Parser.bind
+    (Parser.Lexer.lexeme (Parser.Lexer.identifier))
     (fn [name]
-      (Parser.bind (Parser.Lexer.symbol @"=")
+      (Parser.bind
+        (Parser.Lexer.symbol @"=")
         (fn [_]
-          (Parser.map (Parser.Lexer.integer)
-                      (fn [n] (Pair.init @&name n))))))))
+          (Parser.map (Parser.Lexer.integer) (fn [n] (Pair.init @&name n))))))))
 
 ; Whole config: pairs separated by ';' (with optional whitespace via lexeme).
-(defn config []
-  (Parser.sep-by1 (pair) (Parser.Lexer.symbol @";")))
+(defn config [] (Parser.sep-by1 (pair) (Parser.Lexer.symbol @";")))
 
 ; Pretty-print one pair.
-(defn show-pair [p]
-  (fmt "  %s -> %d" (Pair.a p) @(Pair.b p)))
+(defn show-pair [p] (fmt "  %s -> %d" (Pair.a p) @(Pair.b p)))
 
 (defn run-on [input]
   (do
@@ -35,8 +34,7 @@
           (IO.println "ok:")
           (for [i 0 (Array.length &pairs)]
             (IO.println &(show-pair (Array.unsafe-nth &pairs i)))))
-      (Result.Error e)
-        (IO.println &(fmt "error: %s" &(Parser.format-error &e))))
+      (Result.Error e) (IO.println &(fmt "error: %s" &(Parser.format-error &e))))
     (IO.println "")))
 
 (defn main []
