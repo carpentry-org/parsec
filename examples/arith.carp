@@ -16,10 +16,12 @@
 ; factor = integer | '(' expr ')'
 ; ----------------------------------------------------------------
 (defn factor []
-  (Parser.alt (Parser.Lexer.lexeme (Parser.Lexer.integer))
-              (Parser.Lexer.lexeme (Parser.between (Parser.Lexer.symbol @"(")
-                  (Parser.Lexer.symbol @")")
-                  (Parser.recurse &*expr*)))))
+  (Parser.alt
+    (Parser.Lexer.lexeme (Parser.Lexer.integer))
+    (Parser.Lexer.lexeme
+      (Parser.between (Parser.Lexer.symbol @"(")
+                      (Parser.Lexer.symbol @")")
+                      (Parser.recurse &*expr*)))))
 
 ; ----------------------------------------------------------------
 ; left-associative fold of `factor (op factor)*` into an Int.
@@ -38,21 +40,23 @@
 ; sub-parsers are constructed once, not per-invocation (which would
 ; consume them more than once).
 (defn chainl1 [head op next]
-  (Parser.map (Parser.seq head (Parser.many (Parser.seq op next)))
-              (fn [outer]
-                (let [h @(Pair.a &outer)
-                    pairs (Pair.b &outer)]
-                  (Array.reduce &(fn [acc p]
-                      (apply-op acc @(Pair.a p) @(Pair.b p)))
-                    h
-                    pairs)))))
+  (Parser.map
+    (Parser.seq head (Parser.many (Parser.seq op next)))
+    (fn [outer]
+      (let [h @(Pair.a &outer)
+            pairs (Pair.b &outer)]
+        (Array.reduce
+          &(fn [acc p] (apply-op acc @(Pair.a p) @(Pair.b p)))
+          h
+          pairs)))))
 
 ; ----------------------------------------------------------------
 ; term = factor ('*' factor | '/' factor)*
 ; ----------------------------------------------------------------
 (defn mul-op []
-  (Parser.alt (Parser.map (Parser.Lexer.symbol @"*") (fn [_] \*))
-              (Parser.map (Parser.Lexer.symbol @"/") (fn [_] \/))))
+  (Parser.alt
+    (Parser.map (Parser.Lexer.symbol @"*") (fn [_] \*))
+    (Parser.map (Parser.Lexer.symbol @"/") (fn [_] \/))))
 
 (defn term [] (chainl1 (factor) (mul-op) (factor)))
 
@@ -60,8 +64,9 @@
 ; expr = term ('+' term | '-' term)*
 ; ----------------------------------------------------------------
 (defn add-op []
-  (Parser.alt (Parser.map (Parser.Lexer.symbol @"+") (fn [_] \+))
-              (Parser.map (Parser.Lexer.symbol @"-") (fn [_] \-))))
+  (Parser.alt
+    (Parser.map (Parser.Lexer.symbol @"+") (fn [_] \+))
+    (Parser.map (Parser.Lexer.symbol @"-") (fn [_] \-))))
 
 (defn expr-impl [] (chainl1 (term) (add-op) (term)))
 

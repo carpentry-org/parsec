@@ -83,13 +83,15 @@
 
 ; kv = identifier '=' integer, separated by '; '
 (def p-kv
-  (Parser.sep-by1 (Parser.bind (Parser.Lexer.lexeme (Parser.Lexer.identifier))
-                    (fn [name]
-                      (Parser.bind (Parser.Lexer.symbol @"=")
-                        (fn [_]
-                          (Parser.map (Parser.Lexer.integer)
-                            (fn [n] (Pair.init @&name n)))))))
-                  (Parser.Lexer.symbol @";")))
+  (Parser.sep-by1
+    (Parser.bind
+      (Parser.Lexer.lexeme (Parser.Lexer.identifier))
+      (fn [name]
+        (Parser.bind (Parser.Lexer.symbol @"=")
+                     (fn [_]
+                       (Parser.map (Parser.Lexer.integer)
+                                   (fn [n] (Pair.init @&name n)))))))
+    (Parser.Lexer.symbol @";")))
 
 ; ============================================================
 ; Run helpers — measure parse path only, no parser construction.
