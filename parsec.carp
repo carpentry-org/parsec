@@ -35,10 +35,9 @@ newline, `line` increments and `col` resets to 1.")
   (defn advance [cur b]
     (if (Char.= b \newline)
       (Cursor.init (Int.inc @(Cursor.pos cur)) (Int.inc @(Cursor.line cur)) 1)
-      (Cursor.init
-        (Int.inc @(Cursor.pos cur))
-        @(Cursor.line cur)
-        (Int.inc @(Cursor.col cur)))))
+      (Cursor.init (Int.inc @(Cursor.pos cur))
+                   @(Cursor.line cur)
+                   (Int.inc @(Cursor.col cur)))))
 
   (hidden advance-by)
   (doc advance-by "advances the cursor past `n` bytes, treating the
@@ -47,16 +46,17 @@ instead. Used by UTF-8 codepoint parsers.")
   (defn advance-by [cur n newline?]
     (if newline?
       (Cursor.init (Int.+ @(Cursor.pos cur) n) (Int.inc @(Cursor.line cur)) 1)
-      (Cursor.init
-        (Int.+ @(Cursor.pos cur) n)
-        @(Cursor.line cur)
-        (Int.inc @(Cursor.col cur))))))
+      (Cursor.init (Int.+ @(Cursor.pos cur) n)
+                   @(Cursor.line cur)
+                   (Int.inc @(Cursor.col cur))))))
 
 (doc Expected "is the set of labels carried by a `ParseErr`. The
 common case (a single failing primitive) uses `One` to skip a
 1-element `Array` allocation; merged failures collected by `choice`
 use `Many`.")
-(deftype Expected (One [String]) (Many [(Array String)]))
+(deftype Expected
+  (One [String])
+  (Many [(Array String)]))
 
 (defmodule Expected
   (doc empty "is the empty expected-set.")
@@ -96,36 +96,31 @@ gathered from parsers that failed at that position. Render with
 (defmodule ParseErr
   (doc empty-at "creates a `ParseErr` at `cur` with no labels.")
   (defn empty-at [cur]
-    (ParseErr.init
-      @(Cursor.pos cur)
-      @(Cursor.line cur)
-      @(Cursor.col cur)
-      (Maybe.Nothing)
-      (Expected.empty)))
+    (ParseErr.init @(Cursor.pos cur)
+                   @(Cursor.line cur)
+                   @(Cursor.col cur)
+                   (Maybe.Nothing)
+                   (Expected.empty)))
 
   (doc expected-at "creates a `ParseErr` at `cur` with one expected label.")
   (defn expected-at [cur lbl]
-    (ParseErr.init
-      @(Cursor.pos cur)
-      @(Cursor.line cur)
-      @(Cursor.col cur)
-      (Maybe.Nothing)
-      (Expected.One lbl)))
+    (ParseErr.init @(Cursor.pos cur)
+                   @(Cursor.line cur)
+                   @(Cursor.col cur)
+                   (Maybe.Nothing)
+                   (Expected.One lbl)))
 
   (hidden merge)
   (doc merge "merges two `ParseErr`s by unioning their expected
 sets. Position is taken from `b`.")
   (defn merge [a b]
-    (let [exp (Expected.Many
-            (Array.concat
-              &[
+    (let [exp (Expected.Many (Array.concat &[
                 (Expected.to-array (ParseErr.expected &a))
                 (Expected.to-array (ParseErr.expected &b))]))
           unx (match @(ParseErr.unexpected &b)
             (Maybe.Just s) (Maybe.Just s)
             (Maybe.Nothing) @(ParseErr.unexpected &a))]
-      (ParseErr.init
-        @(ParseErr.pos &b)
+      (ParseErr.init @(ParseErr.pos &b)
         @(ParseErr.line &b)
         @(ParseErr.col &b)
         unx
@@ -150,107 +145,104 @@ that call `Parser.run` directly.")
 
   (doc fail "fails empty, with the given label as the expected token.")
   (defn fail [lbl]
-    (Parser.init
-      (fn [src len cur] (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl)))))
+    (Parser.init (fn [src len cur]
+                   (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl)))))
 
   (doc satisfy "consumes one byte if `pred` holds, otherwise fails empty.")
   (defn satisfy [pred lbl]
-    (Parser.init
-      (fn [src len cur]
-        (let [pos @(Cursor.pos cur)]
-          (if (Int.>= pos len)
-            (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))
-            (let [c (String.char-at src pos)]
-              (if (pred c)
-                (Reply.OkConsumed c (Cursor.advance cur c))
-                (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl)))))))))
+    (Parser.init (fn [src len cur]
+                   (let [pos @(Cursor.pos cur)]
+                     (if (Int.>= pos len)
+                       (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))
+                       (let [c (String.char-at src pos)]
+                         (if (pred c)
+                           (Reply.OkConsumed c (Cursor.advance cur c))
+                           (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl)))))))))
 
   (doc byte "consumes a specific byte (as `Char`). Fails empty if
 the input doesn't match or is at EOF.")
   (defn byte [b]
     (let [lbl (fmt "'%c'" b)]
-      (Parser.init
-        (fn [src len cur]
-          (let [pos @(Cursor.pos cur)]
-            (if (Int.>= pos len)
-              (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))
-              (let [c (String.char-at src pos)]
-                (if (Char.= c b)
-                  (Reply.OkConsumed c (Cursor.advance cur c))
-                  (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))))))))))
+      (Parser.init (fn [src len cur]
+                     (let [pos @(Cursor.pos cur)]
+                       (if (Int.>= pos len)
+                         (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))
+                         (let [c (String.char-at src pos)]
+                           (if (Char.= c b)
+                             (Reply.OkConsumed c (Cursor.advance cur c))
+                             (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))))))))))
 
   (doc any-byte "consumes any byte; fails only at end of input.")
   (defn any-byte []
-    (Parser.init
-      (fn [src len cur]
-        (let [pos @(Cursor.pos cur)]
-          (if (Int.>= pos len)
-            (Reply.ErrEmpty (ParseErr.expected-at cur @"any byte"))
-            (let [c (String.char-at src pos)]
-              (Reply.OkConsumed c (Cursor.advance cur c))))))))
+    (Parser.init (fn [src len cur]
+                   (let [pos @(Cursor.pos cur)]
+                     (if (Int.>= pos len)
+                       (Reply.ErrEmpty (ParseErr.expected-at cur @"any byte"))
+                       (let [c (String.char-at src pos)]
+                         (Reply.OkConsumed c (Cursor.advance cur c))))))))
 
   (doc eof "succeeds without consuming iff the cursor is at end of input.")
   (defn eof []
-    (Parser.init
-      (fn [src len cur]
-        (if (Int.>= @(Cursor.pos cur) len)
-          (Reply.OkEmpty () @cur)
-          (Reply.ErrEmpty (ParseErr.expected-at cur @"end of input"))))))
+    (Parser.init (fn [src len cur]
+                   (if (Int.>= @(Cursor.pos cur) len)
+                     (Reply.OkEmpty () @cur)
+                     (Reply.ErrEmpty (ParseErr.expected-at cur @"end of input"))))))
 
   (doc map "applies `f` to the value produced by `p`.")
   (defn map [p f]
-    (Parser.init
-      (fn [src len cur]
-        (match (~(Parser.run &p) src len cur)
-          (Reply.OkConsumed v c) (Reply.OkConsumed (f v) c)
-          (Reply.OkEmpty v c) (Reply.OkEmpty (f v) c)
-          (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-          (Reply.ErrEmpty e) (Reply.ErrEmpty e)))))
+    (Parser.init (fn [src len cur]
+                   (match (~(Parser.run &p) src len cur)
+                     (Reply.OkConsumed v c) (Reply.OkConsumed (f v) c)
+                     (Reply.OkEmpty v c) (Reply.OkEmpty (f v) c)
+                     (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+                     (Reply.ErrEmpty e) (Reply.ErrEmpty e)))))
 
   (doc seq "runs `p` then `q`, returning a `Pair` of their values.
 Failure of either propagates with appropriate consumption tracking.")
   (defn seq [p q]
-    (Parser.init
-      (fn [src len cur]
-        (match (~(Parser.run &p) src len cur)
-          (Reply.ErrEmpty e) (Reply.ErrEmpty e)
-          (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-          (Reply.OkConsumed v1 c1)
-            (match (~(Parser.run &q) src len &c1)
-              (Reply.OkConsumed v2 c2) (Reply.OkConsumed (Pair.init v1 v2) c2)
-              (Reply.OkEmpty v2 c2) (Reply.OkConsumed (Pair.init v1 v2) c2)
-              (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-              (Reply.ErrEmpty e) (Reply.ErrConsumed e))
-          (Reply.OkEmpty v1 c1)
-            (match (~(Parser.run &q) src len &c1)
-              (Reply.OkConsumed v2 c2) (Reply.OkConsumed (Pair.init v1 v2) c2)
-              (Reply.OkEmpty v2 c2) (Reply.OkEmpty (Pair.init v1 v2) c2)
-              (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-              (Reply.ErrEmpty e) (Reply.ErrEmpty e))))))
+    (Parser.init (fn [src len cur]
+                   (match (~(Parser.run &p) src len cur)
+                     (Reply.ErrEmpty e) (Reply.ErrEmpty e)
+                     (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+                     (Reply.OkConsumed v1 c1)
+                       (match (~(Parser.run &q) src len &c1)
+                         (Reply.OkConsumed v2 c2)
+                           (Reply.OkConsumed (Pair.init v1 v2) c2)
+                         (Reply.OkEmpty v2 c2)
+                           (Reply.OkConsumed (Pair.init v1 v2) c2)
+                         (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+                         (Reply.ErrEmpty e) (Reply.ErrConsumed e))
+                     (Reply.OkEmpty v1 c1)
+                       (match (~(Parser.run &q) src len &c1)
+                         (Reply.OkConsumed v2 c2)
+                           (Reply.OkConsumed (Pair.init v1 v2) c2)
+                         (Reply.OkEmpty v2 c2)
+                           (Reply.OkEmpty (Pair.init v1 v2) c2)
+                         (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+                         (Reply.ErrEmpty e) (Reply.ErrEmpty e))))))
 
   (doc bind "is the monadic bind. Runs `p`, then runs `(f v)` where
 `v` is `p`'s value. The continuation parser is computed from the
 value.")
   (defn bind [p f]
-    (Parser.init
-      (fn [src len cur]
-        (match (~(Parser.run &p) src len cur)
-          (Reply.ErrEmpty e) (Reply.ErrEmpty e)
-          (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-          (Reply.OkConsumed v1 c1)
-            (let [q (f v1)]
-              (match (~(Parser.run &q) src len &c1)
-                (Reply.OkConsumed v2 c2) (Reply.OkConsumed v2 c2)
-                (Reply.OkEmpty v2 c2) (Reply.OkConsumed v2 c2)
-                (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-                (Reply.ErrEmpty e) (Reply.ErrConsumed e)))
-          (Reply.OkEmpty v1 c1)
-            (let [q (f v1)]
-              (match (~(Parser.run &q) src len &c1)
-                (Reply.OkConsumed v2 c2) (Reply.OkConsumed v2 c2)
-                (Reply.OkEmpty v2 c2) (Reply.OkEmpty v2 c2)
-                (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-                (Reply.ErrEmpty e) (Reply.ErrEmpty e)))))))
+    (Parser.init (fn [src len cur]
+                   (match (~(Parser.run &p) src len cur)
+                     (Reply.ErrEmpty e) (Reply.ErrEmpty e)
+                     (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+                     (Reply.OkConsumed v1 c1)
+                       (let [q (f v1)]
+                         (match (~(Parser.run &q) src len &c1)
+                           (Reply.OkConsumed v2 c2) (Reply.OkConsumed v2 c2)
+                           (Reply.OkEmpty v2 c2) (Reply.OkConsumed v2 c2)
+                           (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+                           (Reply.ErrEmpty e) (Reply.ErrConsumed e)))
+                     (Reply.OkEmpty v1 c1)
+                       (let [q (f v1)]
+                         (match (~(Parser.run &q) src len &c1)
+                           (Reply.OkConsumed v2 c2) (Reply.OkConsumed v2 c2)
+                           (Reply.OkEmpty v2 c2) (Reply.OkEmpty v2 c2)
+                           (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+                           (Reply.ErrEmpty e) (Reply.ErrEmpty e)))))))
 
   (doc bind-result "runs `p`, then applies `f` to its value and the
 cursor *after* `p`. `f` returns a `(Result b ParseErr)` directly,
@@ -259,90 +251,86 @@ equivalent `bind` formulation would do. The cursor argument lets `f`
 build a `ParseErr` at the right position when it returns
 `Result.Error`.")
   (defn bind-result [p f]
-    (Parser.init
-      (fn [src len cur]
-        (match (~(Parser.run &p) src len cur)
-          (Reply.ErrEmpty e) (Reply.ErrEmpty e)
-          (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-          (Reply.OkConsumed v c)
-            (match (f v &c)
-              (Result.Success r) (Reply.OkConsumed r c)
-              (Result.Error e) (Reply.ErrConsumed e))
-          (Reply.OkEmpty v c)
-            (match (f v &c)
-              (Result.Success r) (Reply.OkEmpty r c)
-              (Result.Error e) (Reply.ErrEmpty e))))))
+    (Parser.init (fn [src len cur]
+                   (match (~(Parser.run &p) src len cur)
+                     (Reply.ErrEmpty e) (Reply.ErrEmpty e)
+                     (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+                     (Reply.OkConsumed v c)
+                       (match (f v &c)
+                         (Result.Success r) (Reply.OkConsumed r c)
+                         (Result.Error e) (Reply.ErrConsumed e))
+                     (Reply.OkEmpty v c)
+                       (match (f v &c)
+                         (Result.Success r) (Reply.OkEmpty r c)
+                         (Result.Error e) (Reply.ErrEmpty e))))))
 
   (doc then "runs `p` then `q`, discarding `p`'s value and returning
 `q`'s. Equivalent to `(bind p (fn [_] q))` but does not allocate the
 continuation closure per parse.")
   (defn then [p q]
-    (Parser.init
-      (fn [src len cur]
-        (match (~(Parser.run &p) src len cur)
-          (Reply.ErrEmpty e) (Reply.ErrEmpty e)
-          (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-          (Reply.OkConsumed _ c1)
-            (match (~(Parser.run &q) src len &c1)
-              (Reply.OkConsumed v c2) (Reply.OkConsumed v c2)
-              (Reply.OkEmpty v c2) (Reply.OkConsumed v c2)
-              (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-              (Reply.ErrEmpty e) (Reply.ErrConsumed e))
-          (Reply.OkEmpty _ c1)
-            (match (~(Parser.run &q) src len &c1)
-              (Reply.OkConsumed v c2) (Reply.OkConsumed v c2)
-              (Reply.OkEmpty v c2) (Reply.OkEmpty v c2)
-              (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-              (Reply.ErrEmpty e) (Reply.ErrEmpty e))))))
+    (Parser.init (fn [src len cur]
+                   (match (~(Parser.run &p) src len cur)
+                     (Reply.ErrEmpty e) (Reply.ErrEmpty e)
+                     (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+                     (Reply.OkConsumed _ c1)
+                       (match (~(Parser.run &q) src len &c1)
+                         (Reply.OkConsumed v c2) (Reply.OkConsumed v c2)
+                         (Reply.OkEmpty v c2) (Reply.OkConsumed v c2)
+                         (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+                         (Reply.ErrEmpty e) (Reply.ErrConsumed e))
+                     (Reply.OkEmpty _ c1)
+                       (match (~(Parser.run &q) src len &c1)
+                         (Reply.OkConsumed v c2) (Reply.OkConsumed v c2)
+                         (Reply.OkEmpty v c2) (Reply.OkEmpty v c2)
+                         (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+                         (Reply.ErrEmpty e) (Reply.ErrEmpty e))))))
 
   (doc before "runs `p` then `q`, returning `p`'s value and discarding
 `q`'s. The mirror image of `then`.")
   (defn before [p q]
-    (Parser.init
-      (fn [src len cur]
-        (match (~(Parser.run &p) src len cur)
-          (Reply.ErrEmpty e) (Reply.ErrEmpty e)
-          (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-          (Reply.OkConsumed v c1)
-            (match (~(Parser.run &q) src len &c1)
-              (Reply.OkConsumed _ c2) (Reply.OkConsumed v c2)
-              (Reply.OkEmpty _ c2) (Reply.OkConsumed v c2)
-              (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-              (Reply.ErrEmpty e) (Reply.ErrConsumed e))
-          (Reply.OkEmpty v c1)
-            (match (~(Parser.run &q) src len &c1)
-              (Reply.OkConsumed _ c2) (Reply.OkConsumed v c2)
-              (Reply.OkEmpty _ c2) (Reply.OkEmpty v c2)
-              (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-              (Reply.ErrEmpty e) (Reply.ErrEmpty e))))))
+    (Parser.init (fn [src len cur]
+                   (match (~(Parser.run &p) src len cur)
+                     (Reply.ErrEmpty e) (Reply.ErrEmpty e)
+                     (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+                     (Reply.OkConsumed v c1)
+                       (match (~(Parser.run &q) src len &c1)
+                         (Reply.OkConsumed _ c2) (Reply.OkConsumed v c2)
+                         (Reply.OkEmpty _ c2) (Reply.OkConsumed v c2)
+                         (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+                         (Reply.ErrEmpty e) (Reply.ErrConsumed e))
+                     (Reply.OkEmpty v c1)
+                       (match (~(Parser.run &q) src len &c1)
+                         (Reply.OkConsumed _ c2) (Reply.OkConsumed v c2)
+                         (Reply.OkEmpty _ c2) (Reply.OkEmpty v c2)
+                         (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+                         (Reply.ErrEmpty e) (Reply.ErrEmpty e))))))
 
   (doc alt "if `p` fails without consuming, runs `q` from the same
 cursor. If `p` consumes anything, no backtrack — wrap `p` in `try`
 to allow backtracking.")
   (defn alt [p q]
-    (Parser.init
-      (fn [src len cur]
-        (match (~(Parser.run &p) src len cur)
-          (Reply.OkConsumed v c) (Reply.OkConsumed v c)
-          (Reply.OkEmpty v c) (Reply.OkEmpty v c)
-          (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-          (Reply.ErrEmpty e1)
-            (match (~(Parser.run &q) src len cur)
-              (Reply.OkConsumed v c) (Reply.OkConsumed v c)
-              (Reply.OkEmpty v c) (Reply.OkEmpty v c)
-              (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-              (Reply.ErrEmpty e2) (Reply.ErrEmpty (ParseErr.merge e1 e2)))))))
+    (Parser.init (fn [src len cur]
+                   (match (~(Parser.run &p) src len cur)
+                     (Reply.OkConsumed v c) (Reply.OkConsumed v c)
+                     (Reply.OkEmpty v c) (Reply.OkEmpty v c)
+                     (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+                     (Reply.ErrEmpty e1)
+                       (match (~(Parser.run &q) src len cur)
+                         (Reply.OkConsumed v c) (Reply.OkConsumed v c)
+                         (Reply.OkEmpty v c) (Reply.OkEmpty v c)
+                         (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+                         (Reply.ErrEmpty e2)
+                           (Reply.ErrEmpty (ParseErr.merge e1 e2)))))))
 
   (doc try "if `p` fails after consuming, restores the cursor and
 reports the failure as empty so `alt` can backtrack.")
   (defn try [p]
-    (Parser.init
-      (fn [src len cur]
-        (match (~(Parser.run &p) src len cur)
-          (Reply.OkConsumed v c) (Reply.OkConsumed v c)
-          (Reply.OkEmpty v c) (Reply.OkEmpty v c)
-          (Reply.ErrConsumed e) (Reply.ErrEmpty e)
-          (Reply.ErrEmpty e) (Reply.ErrEmpty e)))))
+    (Parser.init (fn [src len cur]
+                   (match (~(Parser.run &p) src len cur)
+                     (Reply.OkConsumed v c) (Reply.OkConsumed v c)
+                     (Reply.OkEmpty v c) (Reply.OkEmpty v c)
+                     (Reply.ErrConsumed e) (Reply.ErrEmpty e)
+                     (Reply.ErrEmpty e) (Reply.ErrEmpty e)))))
 
   (doc lazy "defers parser construction until run time. Use this to
 break eager-construction infinite recursion in recursive grammars.
@@ -362,8 +350,8 @@ lazy thunk in one calling the other.
 Each invocation rebuilds the deferred parser. For deep recursion, prefer
 `Parser.recurse` against a pre-built grammar in a top-level `def`.")
   (defn lazy [thunk]
-    (Parser.init
-      (fn [src len cur] (let [p (thunk)] (~(Parser.run &p) src len cur)))))
+    (Parser.init (fn [src len cur]
+                   (let [p (thunk)] (~(Parser.run &p) src len cur)))))
 
   (doc recurse "runs a parser referenced by a stable static reference,
 without rebuilding it per call. Use for deeply recursive grammars where
@@ -395,20 +383,17 @@ the real parser before parsing. Companion to `recurse`.")
   (doc label "replaces the expected-set on empty failure with
 `name`. Has no effect on consumed failures or successes.")
   (defn label [name p]
-    (Parser.init
-      (fn [src len cur]
-        (match (~(Parser.run &p) src len cur)
-          (Reply.OkConsumed v c) (Reply.OkConsumed v c)
-          (Reply.OkEmpty v c) (Reply.OkEmpty v c)
-          (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-          (Reply.ErrEmpty e)
-            (Reply.ErrEmpty
-              (ParseErr.init
-                @(ParseErr.pos &e)
-                @(ParseErr.line &e)
-                @(ParseErr.col &e)
-                @(ParseErr.unexpected &e)
-                (Expected.One @&name)))))))
+    (Parser.init (fn [src len cur]
+                   (match (~(Parser.run &p) src len cur)
+                     (Reply.OkConsumed v c) (Reply.OkConsumed v c)
+                     (Reply.OkEmpty v c) (Reply.OkEmpty v c)
+                     (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+                     (Reply.ErrEmpty e)
+                       (Reply.ErrEmpty (ParseErr.init @(ParseErr.pos &e)
+                           @(ParseErr.line &e)
+                           @(ParseErr.col &e)
+                           @(ParseErr.unexpected &e)
+                           (Expected.One @&name)))))))
 
   (doc string "matches the literal string `s` byte-for-byte.
 Atomic: on partial mismatch, fails empty (no consumed failure
@@ -416,192 +401,193 @@ mid-string).")
   (defn string [s]
     (let [slen (String.length &s)
           lbl (fmt "\"%s\"" &s)]
-      (Parser.init
-        (fn [src len cur]
-          (let [pos @(Cursor.pos cur)]
-            (if (Int.> (Int.+ pos slen) len)
-              (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))
-              (let-do [matches true]
-                (for [i 0 slen]
-                  (unless (Char.=
-                      (String.char-at &s i)
-                      (String.char-at src (Int.+ pos i)))
-                    (set! matches false)))
-                (if matches
-                  (let-do [c @cur]
-                    (for [i 0 slen]
-                      (set!
-                        c
-                        (Cursor.advance &c (String.char-at src (Int.+ pos i)))))
-                    (if (Int.> slen 0)
-                      (Reply.OkConsumed @&s c)
-                      (Reply.OkEmpty @&s c)))
-                  (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))))))))))
+      (Parser.init (fn [src len cur]
+                     (let [pos @(Cursor.pos cur)]
+                       (if (Int.> (Int.+ pos slen) len)
+                         (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))
+                         (let-do [matches true]
+                           (for [i 0 slen]
+                             (unless (Char.= (String.char-at &s i)
+                                 (String.char-at src (Int.+ pos i)))
+                               (set! matches false)))
+                           (if matches
+                             (let-do [c @cur]
+                               (for [i 0 slen]
+                                 (set! c
+                                   (Cursor.advance &c
+                                     (String.char-at src (Int.+ pos i)))))
+                               (if (Int.> slen 0)
+                                 (Reply.OkConsumed @&s c)
+                                 (Reply.OkEmpty @&s c)))
+                             (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))))))))))
 
   (doc optional "if `p` succeeds, wraps the value in `Just`; if `p`
 fails empty, succeeds with `Nothing` without consuming. Consumed
 failures propagate.")
   (defn optional [p]
-    (Parser.init
-      (fn [src len cur]
-        (match (~(Parser.run &p) src len cur)
-          (Reply.OkConsumed v c) (Reply.OkConsumed (Maybe.Just v) c)
-          (Reply.OkEmpty v c) (Reply.OkEmpty (Maybe.Just v) c)
-          (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-          (Reply.ErrEmpty e) (Reply.OkEmpty (Maybe.Nothing) @cur)))))
+    (Parser.init (fn [src len cur]
+                   (match (~(Parser.run &p) src len cur)
+                     (Reply.OkConsumed v c) (Reply.OkConsumed (Maybe.Just v) c)
+                     (Reply.OkEmpty v c) (Reply.OkEmpty (Maybe.Just v) c)
+                     (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+                     (Reply.ErrEmpty e) (Reply.OkEmpty (Maybe.Nothing) @cur)))))
 
   (doc lookahead "runs `p`, then restores the cursor. `p`'s value
 is kept, but no input is consumed. `p`'s failures propagate as-is.")
   (defn lookahead [p]
-    (Parser.init
-      (fn [src len cur]
-        (match (~(Parser.run &p) src len cur)
-          (Reply.OkConsumed v _) (Reply.OkEmpty v @cur)
-          (Reply.OkEmpty v _) (Reply.OkEmpty v @cur)
-          (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-          (Reply.ErrEmpty e) (Reply.ErrEmpty e)))))
+    (Parser.init (fn [src len cur]
+                   (match (~(Parser.run &p) src len cur)
+                     (Reply.OkConsumed v _) (Reply.OkEmpty v @cur)
+                     (Reply.OkEmpty v _) (Reply.OkEmpty v @cur)
+                     (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+                     (Reply.ErrEmpty e) (Reply.ErrEmpty e)))))
 
   (doc not-followed-by "succeeds (without consuming) if `p` fails;
 fails if `p` succeeds. Useful for negative assertions.")
   (defn not-followed-by [p]
-    (Parser.init
-      (fn [src len cur]
-        (match (~(Parser.run &p) src len cur)
-          (Reply.OkConsumed _ _)
-            (Reply.ErrEmpty (ParseErr.expected-at cur @"unexpected match"))
-          (Reply.OkEmpty _ _)
-            (Reply.ErrEmpty (ParseErr.expected-at cur @"unexpected match"))
-          (Reply.ErrConsumed _) (Reply.OkEmpty () @cur)
-          (Reply.ErrEmpty _) (Reply.OkEmpty () @cur)))))
+    (Parser.init (fn [src len cur]
+                   (match (~(Parser.run &p) src len cur)
+                     (Reply.OkConsumed _ _)
+                       (Reply.ErrEmpty (ParseErr.expected-at cur
+                           @"unexpected match"))
+                     (Reply.OkEmpty _ _)
+                       (Reply.ErrEmpty (ParseErr.expected-at cur
+                           @"unexpected match"))
+                     (Reply.ErrConsumed _) (Reply.OkEmpty () @cur)
+                     (Reply.ErrEmpty _) (Reply.OkEmpty () @cur)))))
 
   (doc count "runs `p` exactly `n` times, collecting results into
 an `Array`. If any iteration fails, propagates with appropriate
 consumption.")
   (defn count [n p]
-    (Parser.init
-      (fn [src len cur]
-        (let-do [acc []
-                 c @cur
-                 err (the (Maybe ParseErr) (Maybe.Nothing))
-                 consumed-any false
-                 i 0
-                 going true]
-          (while-do (and going (Int.< i n))
-            (match (~(Parser.run &p) src len &c)
-              (Reply.OkConsumed v c2)
-                (do
-                  (set! acc (Array.push-back acc v))
-                  (set! c c2)
-                  (set! consumed-any true))
-              (Reply.OkEmpty v c2)
-                (do (set! acc (Array.push-back acc v)) (set! c c2))
-              (Reply.ErrEmpty e)
-                (do (set! err (Maybe.Just e)) (set! going false))
-              (Reply.ErrConsumed e)
-                (do (set! err (Maybe.Just e)) (set! going false)))
-            (set! i (Int.inc i)))
-          (match err
-            (Maybe.Just e)
-              (if consumed-any (Reply.ErrConsumed e) (Reply.ErrEmpty e))
-            (Maybe.Nothing)
-              (if consumed-any (Reply.OkConsumed acc c) (Reply.OkEmpty acc c)))))))
+    (Parser.init (fn [src len cur]
+                   (let-do [acc []
+                       c @cur
+                       err (the (Maybe ParseErr) (Maybe.Nothing))
+                       consumed-any false
+                       i 0
+                       going true]
+                     (while-do (and going (Int.< i n))
+                       (match (~(Parser.run &p) src len &c)
+                         (Reply.OkConsumed v c2)
+                           (do
+                             (set! acc (Array.push-back acc v))
+                             (set! c c2)
+                             (set! consumed-any true))
+                         (Reply.OkEmpty v c2)
+                           (do (set! acc (Array.push-back acc v)) (set! c c2))
+                         (Reply.ErrEmpty e)
+                           (do (set! err (Maybe.Just e)) (set! going false))
+                         (Reply.ErrConsumed e)
+                           (do (set! err (Maybe.Just e)) (set! going false)))
+                       (set! i (Int.inc i)))
+                     (match err
+                       (Maybe.Just e)
+                         (if consumed-any
+                           (Reply.ErrConsumed e)
+                           (Reply.ErrEmpty e))
+                       (Maybe.Nothing)
+                         (if consumed-any
+                           (Reply.OkConsumed acc c)
+                           (Reply.OkEmpty acc c)))))))
 
   (doc many "runs `p` zero or more times, collecting results. Stops
 on empty failure of `p`. If `p` succeeds without consuming, the loop
 stops to avoid infinite recursion (do not use `many` with an
 empty-success parser).")
   (defn many [p]
-    (Parser.init
-      (fn [src len cur]
-        (let-do [acc []
-                 c @cur
-                 err (the (Maybe ParseErr) (Maybe.Nothing))
-                 consumed-any false
-                 going true]
-          (while-do going
-            (match (~(Parser.run &p) src len &c)
-              (Reply.OkConsumed v c2)
-                (do
-                  (set! acc (Array.push-back acc v))
-                  (set! c c2)
-                  (set! consumed-any true))
-              (Reply.OkEmpty _ _) (set! going false)
-              (Reply.ErrEmpty _) (set! going false)
-              (Reply.ErrConsumed e2)
-                (do (set! err (Maybe.Just e2)) (set! going false))))
-          (match err
-            (Maybe.Just e) (Reply.ErrConsumed e)
-            (Maybe.Nothing)
-              (if consumed-any (Reply.OkConsumed acc c) (Reply.OkEmpty acc c)))))))
+    (Parser.init (fn [src len cur]
+                   (let-do [acc []
+                       c @cur
+                       err (the (Maybe ParseErr) (Maybe.Nothing))
+                       consumed-any false
+                       going true]
+                     (while-do going
+                       (match (~(Parser.run &p) src len &c)
+                         (Reply.OkConsumed v c2)
+                           (do
+                             (set! acc (Array.push-back acc v))
+                             (set! c c2)
+                             (set! consumed-any true))
+                         (Reply.OkEmpty _ _) (set! going false)
+                         (Reply.ErrEmpty _) (set! going false)
+                         (Reply.ErrConsumed e2)
+                           (do (set! err (Maybe.Just e2)) (set! going false))))
+                     (match err
+                       (Maybe.Just e) (Reply.ErrConsumed e)
+                       (Maybe.Nothing)
+                         (if consumed-any
+                           (Reply.OkConsumed acc c)
+                           (Reply.OkEmpty acc c)))))))
 
   (doc many1 "runs `p` one or more times. Fails (with same
 consumption as `p`'s first failure) if `p` doesn't match at least
 once.")
   (defn many1 [p]
-    (Parser.init
-      (fn [src len cur]
-        (match (~(Parser.run &p) src len cur)
-          (Reply.ErrEmpty e) (Reply.ErrEmpty e)
-          (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-          (Reply.OkConsumed v1 c1)
-            (let-do [acc [v1]
-                     c c1
-                     err (the (Maybe ParseErr) (Maybe.Nothing))
-                     going true]
-              (while-do going
-                (match (~(Parser.run &p) src len &c)
-                  (Reply.OkConsumed v c2)
-                    (do (set! acc (Array.push-back acc v)) (set! c c2))
-                  (Reply.OkEmpty _ _) (set! going false)
-                  (Reply.ErrEmpty _) (set! going false)
-                  (Reply.ErrConsumed e2)
-                    (do (set! err (Maybe.Just e2)) (set! going false))))
-              (match err
-                (Maybe.Just e) (Reply.ErrConsumed e)
-                (Maybe.Nothing) (Reply.OkConsumed acc c)))
-          (Reply.OkEmpty v1 c1) (Reply.OkEmpty [v1] c1)))))
+    (Parser.init (fn [src len cur]
+                   (match (~(Parser.run &p) src len cur)
+                     (Reply.ErrEmpty e) (Reply.ErrEmpty e)
+                     (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+                     (Reply.OkConsumed v1 c1)
+                       (let-do [acc [v1]
+                           c c1
+                           err (the (Maybe ParseErr) (Maybe.Nothing))
+                           going true]
+                         (while-do going
+                           (match (~(Parser.run &p) src len &c)
+                             (Reply.OkConsumed v c2)
+                               (do
+                                 (set! acc (Array.push-back acc v))
+                                 (set! c c2))
+                             (Reply.OkEmpty _ _) (set! going false)
+                             (Reply.ErrEmpty _) (set! going false)
+                             (Reply.ErrConsumed e2)
+                               (do (set! err (Maybe.Just e2)) (set! going false))))
+                         (match err
+                           (Maybe.Just e) (Reply.ErrConsumed e)
+                           (Maybe.Nothing) (Reply.OkConsumed acc c)))
+                     (Reply.OkEmpty v1 c1) (Reply.OkEmpty [v1] c1)))))
 
   (doc between "runs `open`, then `p`, then `close`, returning
 `p`'s value. Once `open` consumes, all subsequent failures are
 consumed failures.")
   (defn between [open close p]
-    (Parser.init
-      (fn [src len cur]
-        (match (~(Parser.run &open) src len cur)
-          (Reply.ErrEmpty e) (Reply.ErrEmpty e)
-          (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-          (Reply.OkConsumed _ c1)
-            (match (~(Parser.run &p) src len &c1)
-              (Reply.ErrEmpty e) (Reply.ErrConsumed e)
-              (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-              (Reply.OkConsumed v c2)
-                (match (~(Parser.run &close) src len &c2)
-                  (Reply.OkConsumed _ c3) (Reply.OkConsumed v c3)
-                  (Reply.OkEmpty _ c3) (Reply.OkConsumed v c3)
-                  (Reply.ErrEmpty e) (Reply.ErrConsumed e)
-                  (Reply.ErrConsumed e) (Reply.ErrConsumed e))
-              (Reply.OkEmpty v c2)
-                (match (~(Parser.run &close) src len &c2)
-                  (Reply.OkConsumed _ c3) (Reply.OkConsumed v c3)
-                  (Reply.OkEmpty _ c3) (Reply.OkConsumed v c3)
-                  (Reply.ErrEmpty e) (Reply.ErrConsumed e)
-                  (Reply.ErrConsumed e) (Reply.ErrConsumed e)))
-          (Reply.OkEmpty _ c1)
-            (match (~(Parser.run &p) src len &c1)
-              (Reply.ErrEmpty e) (Reply.ErrEmpty e)
-              (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-              (Reply.OkConsumed v c2)
-                (match (~(Parser.run &close) src len &c2)
-                  (Reply.OkConsumed _ c3) (Reply.OkConsumed v c3)
-                  (Reply.OkEmpty _ c3) (Reply.OkConsumed v c3)
-                  (Reply.ErrEmpty e) (Reply.ErrConsumed e)
-                  (Reply.ErrConsumed e) (Reply.ErrConsumed e))
-              (Reply.OkEmpty v c2)
-                (match (~(Parser.run &close) src len &c2)
-                  (Reply.OkConsumed _ c3) (Reply.OkConsumed v c3)
-                  (Reply.OkEmpty _ c3) (Reply.OkEmpty v c3)
-                  (Reply.ErrEmpty e) (Reply.ErrEmpty e)
-                  (Reply.ErrConsumed e) (Reply.ErrConsumed e)))))))
+    (Parser.init (fn [src len cur]
+                   (match (~(Parser.run &open) src len cur)
+                     (Reply.ErrEmpty e) (Reply.ErrEmpty e)
+                     (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+                     (Reply.OkConsumed _ c1)
+                       (match (~(Parser.run &p) src len &c1)
+                         (Reply.ErrEmpty e) (Reply.ErrConsumed e)
+                         (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+                         (Reply.OkConsumed v c2)
+                           (match (~(Parser.run &close) src len &c2)
+                             (Reply.OkConsumed _ c3) (Reply.OkConsumed v c3)
+                             (Reply.OkEmpty _ c3) (Reply.OkConsumed v c3)
+                             (Reply.ErrEmpty e) (Reply.ErrConsumed e)
+                             (Reply.ErrConsumed e) (Reply.ErrConsumed e))
+                         (Reply.OkEmpty v c2)
+                           (match (~(Parser.run &close) src len &c2)
+                             (Reply.OkConsumed _ c3) (Reply.OkConsumed v c3)
+                             (Reply.OkEmpty _ c3) (Reply.OkConsumed v c3)
+                             (Reply.ErrEmpty e) (Reply.ErrConsumed e)
+                             (Reply.ErrConsumed e) (Reply.ErrConsumed e)))
+                     (Reply.OkEmpty _ c1)
+                       (match (~(Parser.run &p) src len &c1)
+                         (Reply.ErrEmpty e) (Reply.ErrEmpty e)
+                         (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+                         (Reply.OkConsumed v c2)
+                           (match (~(Parser.run &close) src len &c2)
+                             (Reply.OkConsumed _ c3) (Reply.OkConsumed v c3)
+                             (Reply.OkEmpty _ c3) (Reply.OkConsumed v c3)
+                             (Reply.ErrEmpty e) (Reply.ErrConsumed e)
+                             (Reply.ErrConsumed e) (Reply.ErrConsumed e))
+                         (Reply.OkEmpty v c2)
+                           (match (~(Parser.run &close) src len &c2)
+                             (Reply.OkConsumed _ c3) (Reply.OkConsumed v c3)
+                             (Reply.OkEmpty _ c3) (Reply.OkEmpty v c3)
+                             (Reply.ErrEmpty e) (Reply.ErrEmpty e)
+                             (Reply.ErrConsumed e) (Reply.ErrConsumed e)))))))
 
   (private sep-by1-loop)
   (hidden sep-by1-loop)
@@ -642,135 +628,156 @@ consumed failures.")
 is not allowed (`sep` must be followed by another `p`). Returns an
 `Array` of `p` values.")
   (defn sep-by1 [p sep]
-    (Parser.init
-      (fn [src len cur]
-        (match (~(Parser.run &p) src len cur)
-          (Reply.ErrEmpty e) (Reply.ErrEmpty e)
-          (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-          (Reply.OkConsumed v1 c1) (sep-by1-loop &p &sep src len c1 [v1] true)
-          (Reply.OkEmpty v1 c1) (sep-by1-loop &p &sep src len c1 [v1] false)))))
+    (Parser.init (fn [src len cur]
+                   (match (~(Parser.run &p) src len cur)
+                     (Reply.ErrEmpty e) (Reply.ErrEmpty e)
+                     (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+                     (Reply.OkConsumed v1 c1)
+                       (sep-by1-loop &p &sep src len c1 [v1] true)
+                     (Reply.OkEmpty v1 c1)
+                       (sep-by1-loop &p &sep src len c1 [v1] false)))))
 
   (doc sep-by "zero or more `p` separated by `sep`. Returns an
 `Array` (possibly empty).")
   (defn sep-by [p sep]
-    (Parser.init
-      (fn [src len cur]
-        (match (~(Parser.run &p) src len cur)
-          (Reply.ErrEmpty _) (Reply.OkEmpty [] @cur)
-          (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-          (Reply.OkConsumed v1 c1) (sep-by1-loop &p &sep src len c1 [v1] true)
-          (Reply.OkEmpty v1 c1) (sep-by1-loop &p &sep src len c1 [v1] false)))))
+    (Parser.init (fn [src len cur]
+                   (match (~(Parser.run &p) src len cur)
+                     (Reply.ErrEmpty _) (Reply.OkEmpty [] @cur)
+                     (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+                     (Reply.OkConsumed v1 c1)
+                       (sep-by1-loop &p &sep src len c1 [v1] true)
+                     (Reply.OkEmpty v1 c1)
+                       (sep-by1-loop &p &sep src len c1 [v1] false)))))
 
   (doc choice "tries each parser in turn; returns the first
 success. If all parsers fail empty, the resulting failure merges
 their expected sets. A consumed failure of any parser short-circuits
 (use `try` inside if needed).")
   (defn choice [ps]
-    (Parser.init
-      (fn [src len cur]
-        (let-do [n (Array.length &ps)
-                 i 0
-                 going true
-                 result (the (Reply a) (Reply.ErrEmpty (ParseErr.empty-at cur)))
-                 labels []
-                 err-pos @(Cursor.pos cur)
-                 err-line @(Cursor.line cur)
-                 err-col @(Cursor.col cur)
-                 err-unx (the (Maybe String) (Maybe.Nothing))]
-          (while-do (and going (Int.< i n))
-            (match (~(Parser.run (Array.unsafe-nth &ps i)) src len cur)
-              (Reply.OkConsumed v c)
-                (do (set! result (Reply.OkConsumed v c)) (set! going false))
-              (Reply.OkEmpty v c)
-                (do (set! result (Reply.OkEmpty v c)) (set! going false))
-              (Reply.ErrConsumed e)
-                (do (set! result (Reply.ErrConsumed e)) (set! going false))
-              (Reply.ErrEmpty e)
-                (do
-                  (set! err-pos @(ParseErr.pos &e))
-                  (set! err-line @(ParseErr.line &e))
-                  (set! err-col @(ParseErr.col &e))
-                  (match @(ParseErr.unexpected &e)
-                    (Maybe.Just s) (set! err-unx (Maybe.Just s))
-                    (Maybe.Nothing) ())
-                  (set!
-                    labels
-                    (Expected.append-into labels (ParseErr.expected &e)))))
-            (set! i (Int.inc i)))
-          (if going
-            (Reply.ErrEmpty
-              (ParseErr.init
-                err-pos
-                err-line
-                err-col
-                err-unx
-                (Expected.Many labels)))
-            result)))))
+    (Parser.init (fn [src len cur]
+                   (let-do [n (Array.length &ps)
+                       i 0
+                       going true
+                       result (the (Reply a)
+                         (Reply.ErrEmpty (ParseErr.empty-at cur)))
+                       labels []
+                       err-pos @(Cursor.pos cur)
+                       err-line @(Cursor.line cur)
+                       err-col @(Cursor.col cur)
+                       err-unx (the (Maybe String) (Maybe.Nothing))]
+                     (while-do (and going (Int.< i n))
+                       (match (~(Parser.run (Array.unsafe-nth &ps i)) src
+                           len
+                           cur)
+                         (Reply.OkConsumed v c)
+                           (do
+                             (set! result (Reply.OkConsumed v c))
+                             (set! going false))
+                         (Reply.OkEmpty v c)
+                           (do
+                             (set! result (Reply.OkEmpty v c))
+                             (set! going false))
+                         (Reply.ErrConsumed e)
+                           (do
+                             (set! result (Reply.ErrConsumed e))
+                             (set! going false))
+                         (Reply.ErrEmpty e)
+                           (do
+                             (set! err-pos @(ParseErr.pos &e))
+                             (set! err-line @(ParseErr.line &e))
+                             (set! err-col @(ParseErr.col &e))
+                             (match @(ParseErr.unexpected &e)
+                               (Maybe.Just s) (set! err-unx (Maybe.Just s))
+                               (Maybe.Nothing) ())
+                             (set! labels
+                               (Expected.append-into labels
+                                 (ParseErr.expected &e)))))
+                       (set! i (Int.inc i)))
+                     (if going
+                       (Reply.ErrEmpty (ParseErr.init err-pos
+                           err-line
+                           err-col
+                           err-unx
+                           (Expected.Many labels)))
+                       result)))))
 
   (doc slice-of "runs `p`; on success, replaces `p`'s value with
 the slice of input that `p` consumed (as a `String`). On failure,
 propagates as-is.")
   (defn slice-of [p]
-    (Parser.init
-      (fn [src len cur]
-        (let [start @(Cursor.pos cur)]
-          (match (~(Parser.run &p) src len cur)
-            (Reply.OkConsumed _ c)
-              (Reply.OkConsumed (String.byte-slice src start @(Cursor.pos &c)) c)
-            (Reply.OkEmpty _ c)
-              (Reply.OkEmpty (String.byte-slice src start @(Cursor.pos &c)) c)
-            (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-            (Reply.ErrEmpty e) (Reply.ErrEmpty e))))))
+    (Parser.init (fn [src len cur]
+                   (let [start @(Cursor.pos cur)]
+                     (match (~(Parser.run &p) src len cur)
+                       (Reply.OkConsumed _ c)
+                         (Reply.OkConsumed (String.byte-slice src
+                             start
+                             @(Cursor.pos &c))
+                           c)
+                       (Reply.OkEmpty _ c)
+                         (Reply.OkEmpty (String.byte-slice src
+                             start
+                             @(Cursor.pos &c))
+                           c)
+                       (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+                       (Reply.ErrEmpty e) (Reply.ErrEmpty e))))))
 
   (doc take "consumes exactly `n` bytes, returning them as a
 `String`. Fails empty if fewer than `n` bytes remain.")
   (defn take [n]
-    (Parser.init
-      (fn [src len cur]
-        (let [start @(Cursor.pos cur)]
-          (if (Int.> (Int.+ start n) len)
-            (Reply.ErrEmpty (ParseErr.expected-at cur (fmt "%d more bytes" n)))
-            (let-do [c @cur]
-              (for [i 0 n]
-                (set! c (Cursor.advance &c (String.char-at src (Int.+ start i)))))
-              (if (Int.> n 0)
-                (Reply.OkConsumed
-                  (String.byte-slice src start (Int.+ start n))
-                  c)
-                (Reply.OkEmpty (String.byte-slice src start (Int.+ start n)) c))))))))
+    (Parser.init (fn [src len cur]
+                   (let [start @(Cursor.pos cur)]
+                     (if (Int.> (Int.+ start n) len)
+                       (Reply.ErrEmpty (ParseErr.expected-at cur
+                           (fmt "%d more bytes" n)))
+                       (let-do [c @cur]
+                         (for [i 0 n]
+                           (set! c
+                             (Cursor.advance &c
+                               (String.char-at src (Int.+ start i)))))
+                         (if (Int.> n 0)
+                           (Reply.OkConsumed (String.byte-slice src
+                               start
+                               (Int.+ start n))
+                             c)
+                           (Reply.OkEmpty (String.byte-slice src
+                               start
+                               (Int.+ start n))
+                             c))))))))
 
   (doc take-while "consumes bytes while `pred` holds. Always
 succeeds (possibly with empty result). Returns the consumed slice as
 a `String`.")
   (defn take-while [pred]
-    (Parser.init
-      (fn [src len cur]
-        (let-do [start @(Cursor.pos cur)
-                 c @cur
-                 going true]
-          (while-do (and going (Int.< @(Cursor.pos &c) len))
-            (let [b (String.char-at src @(Cursor.pos &c))]
-              (if (pred b) (set! c (Cursor.advance &c b)) (set! going false))))
-          (let [end @(Cursor.pos &c)]
-            (if (Int.> end start)
-              (Reply.OkConsumed (String.byte-slice src start end) c)
-              (Reply.OkEmpty (String.byte-slice src start end) c)))))))
+    (Parser.init (fn [src len cur]
+                   (let-do [start @(Cursor.pos cur)
+                       c @cur
+                       going true]
+                     (while-do (and going (Int.< @(Cursor.pos &c) len))
+                       (let [b (String.char-at src @(Cursor.pos &c))]
+                         (if (pred b)
+                           (set! c (Cursor.advance &c b))
+                           (set! going false))))
+                     (let [end @(Cursor.pos &c)]
+                       (if (Int.> end start)
+                         (Reply.OkConsumed (String.byte-slice src start end) c)
+                         (Reply.OkEmpty (String.byte-slice src start end) c)))))))
 
   (doc take-while1 "like `take-while`, but requires at least one byte to match.")
   (defn take-while1 [pred]
-    (Parser.init
-      (fn [src len cur]
-        (let-do [start @(Cursor.pos cur)
-                 c @cur
-                 going true]
-          (while-do (and going (Int.< @(Cursor.pos &c) len))
-            (let [b (String.char-at src @(Cursor.pos &c))]
-              (if (pred b) (set! c (Cursor.advance &c b)) (set! going false))))
-          (let [end @(Cursor.pos &c)]
-            (if (Int.> end start)
-              (Reply.OkConsumed (String.byte-slice src start end) c)
-              (Reply.ErrEmpty
-                (ParseErr.expected-at cur @"at least one matching byte"))))))))
+    (Parser.init (fn [src len cur]
+                   (let-do [start @(Cursor.pos cur)
+                       c @cur
+                       going true]
+                     (while-do (and going (Int.< @(Cursor.pos &c) len))
+                       (let [b (String.char-at src @(Cursor.pos &c))]
+                         (if (pred b)
+                           (set! c (Cursor.advance &c b))
+                           (set! going false))))
+                     (let [end @(Cursor.pos &c)]
+                       (if (Int.> end start)
+                         (Reply.OkConsumed (String.byte-slice src start end) c)
+                         (Reply.ErrEmpty (ParseErr.expected-at cur
+                             @"at least one matching byte"))))))))
 
   (doc UTF8 "is a submodule of codepoint-level parsers layered on the
 byte-level core. Each codepoint advances the cursor by one column,
@@ -797,89 +804,83 @@ width (1-4) of the codepoint, or `Nothing` on EOF or malformed input.")
               (if (Int.>= (Int.+ pos 1) len)
                 (Maybe.Nothing)
                 (let [b1 (byte-at src (Int.+ pos 1))
-                      cp (Int.bit-or
-                        (Int.bit-shift-left (Int.bit-and b0 31) 6)
-                        (Int.bit-and b1 63))]
+                    cp (Int.bit-or (Int.bit-shift-left (Int.bit-and b0 31) 6)
+                      (Int.bit-and b1 63))]
                   (Maybe.Just (Pair.init (Char.from-int cp) 2))))
             (Int.< b0 240)
               (if (Int.>= (Int.+ pos 2) len)
                 (Maybe.Nothing)
                 (let [b1 (byte-at src (Int.+ pos 1))
-                      b2 (byte-at src (Int.+ pos 2))
-                      cp (Int.bit-or
-                        (Int.bit-or
-                          (Int.bit-shift-left (Int.bit-and b0 15) 12)
-                          (Int.bit-shift-left (Int.bit-and b1 63) 6))
-                        (Int.bit-and b2 63))]
+                    b2 (byte-at src (Int.+ pos 2))
+                    cp (Int.bit-or (Int.bit-or (Int.bit-shift-left (Int.bit-and b0
+                            15)
+                          12)
+                        (Int.bit-shift-left (Int.bit-and b1 63) 6))
+                      (Int.bit-and b2 63))]
                   (Maybe.Just (Pair.init (Char.from-int cp) 3))))
             (Int.< b0 248)
               (if (Int.>= (Int.+ pos 3) len)
                 (Maybe.Nothing)
                 (let [b1 (byte-at src (Int.+ pos 1))
-                      b2 (byte-at src (Int.+ pos 2))
-                      b3 (byte-at src (Int.+ pos 3))
-                      cp (Int.bit-or
-                        (Int.bit-or
-                          (Int.bit-or
-                            (Int.bit-shift-left (Int.bit-and b0 7) 18)
-                            (Int.bit-shift-left (Int.bit-and b1 63) 12))
-                          (Int.bit-shift-left (Int.bit-and b2 63) 6))
-                        (Int.bit-and b3 63))]
+                    b2 (byte-at src (Int.+ pos 2))
+                    b3 (byte-at src (Int.+ pos 3))
+                    cp (Int.bit-or (Int.bit-or (Int.bit-or (Int.bit-shift-left (Int.bit-and b0
+                              7)
+                            18)
+                          (Int.bit-shift-left (Int.bit-and b1 63) 12))
+                        (Int.bit-shift-left (Int.bit-and b2 63) 6))
+                      (Int.bit-and b3 63))]
                   (Maybe.Just (Pair.init (Char.from-int cp) 4))))
             (Maybe.Nothing)))))
 
     (doc any-char "consumes one UTF-8 codepoint, returning it as a
 `Char`. Fails empty at end of input or on malformed UTF-8.")
     (defn any-char []
-      (Parser.init
-        (fn [src len cur]
-          (let [pos @(Cursor.pos cur)]
-            (match (decode src len pos)
-              (Maybe.Nothing)
-                (Reply.ErrEmpty (ParseErr.expected-at cur @"any character"))
-              (Maybe.Just dec)
-                (let [cp @(Pair.a &dec)
-                      w @(Pair.b &dec)]
-                  (Reply.OkConsumed
-                    cp
-                    (Cursor.advance-by cur w (Char.= cp \newline)))))))))
+      (Parser.init (fn [src len cur]
+                     (let [pos @(Cursor.pos cur)]
+                       (match (decode src len pos)
+                         (Maybe.Nothing)
+                           (Reply.ErrEmpty (ParseErr.expected-at cur
+                               @"any character"))
+                         (Maybe.Just dec)
+                           (let [cp @(Pair.a &dec)
+                               w @(Pair.b &dec)]
+                             (Reply.OkConsumed cp
+                               (Cursor.advance-by cur w (Char.= cp \newline)))))))))
 
     (doc char "consumes a specific Unicode codepoint. Fails empty if the
 input doesn't match.")
     (defn char [c]
-      (Parser.init
-        (fn [src len cur]
-          (let [pos @(Cursor.pos cur)]
-            (match (decode src len pos)
-              (Maybe.Nothing)
-                (Reply.ErrEmpty
-                  (ParseErr.expected-at cur (fmt "U+%04x" (Char.to-int c))))
-              (Maybe.Just dec)
-                (let [cp @(Pair.a &dec)
-                      w @(Pair.b &dec)]
-                  (if (Char.= cp c)
-                    (Reply.OkConsumed
-                      cp
-                      (Cursor.advance-by cur w (Char.= cp \newline)))
-                    (Reply.ErrEmpty
-                      (ParseErr.expected-at cur (fmt "U+%04x" (Char.to-int c)))))))))))
+      (Parser.init (fn [src len cur]
+                     (let [pos @(Cursor.pos cur)]
+                       (match (decode src len pos)
+                         (Maybe.Nothing)
+                           (Reply.ErrEmpty (ParseErr.expected-at cur
+                               (fmt "U+%04x" (Char.to-int c))))
+                         (Maybe.Just dec)
+                           (let [cp @(Pair.a &dec)
+                               w @(Pair.b &dec)]
+                             (if (Char.= cp c)
+                               (Reply.OkConsumed cp
+                                 (Cursor.advance-by cur w (Char.= cp \newline)))
+                               (Reply.ErrEmpty (ParseErr.expected-at cur
+                                   (fmt "U+%04x" (Char.to-int c)))))))))))
 
     (doc codepoint-satisfy "consumes one UTF-8 codepoint if `pred` holds.
 Fails empty otherwise (or at EOF / on malformed input).")
     (defn codepoint-satisfy [pred lbl]
-      (Parser.init
-        (fn [src len cur]
-          (let [pos @(Cursor.pos cur)]
-            (match (decode src len pos)
-              (Maybe.Nothing) (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))
-              (Maybe.Just dec)
-                (let [cp @(Pair.a &dec)
-                      w @(Pair.b &dec)]
-                  (if (pred cp)
-                    (Reply.OkConsumed
-                      cp
-                      (Cursor.advance-by cur w (Char.= cp \newline)))
-                    (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))))))))))
+      (Parser.init (fn [src len cur]
+                     (let [pos @(Cursor.pos cur)]
+                       (match (decode src len pos)
+                         (Maybe.Nothing)
+                           (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))
+                         (Maybe.Just dec)
+                           (let [cp @(Pair.a &dec)
+                               w @(Pair.b &dec)]
+                             (if (pred cp)
+                               (Reply.OkConsumed cp
+                                 (Cursor.advance-by cur w (Char.= cp \newline)))
+                               (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))))))))))
 
   (doc Lexer "is a submodule of common-token parsers: whitespace
 handling, integers, identifiers, and literal symbols.")
@@ -891,9 +892,8 @@ handling, integers, identifiers, and literal symbols.")
     (private alpha?)
     (hidden alpha?)
     (defn alpha? [c]
-      (or
-        (and (Char.>= c \A) (Char.<= c \Z))
-        (and (Char.>= c \a) (Char.<= c \z))))
+      (or (and (Char.>= c \A) (Char.<= c \Z))
+          (and (Char.>= c \a) (Char.<= c \z))))
 
     (private alnum?)
     (hidden alnum?)
@@ -906,8 +906,7 @@ handling, integers, identifiers, and literal symbols.")
 `start-c` if there were none).")
     (defn scan-digits [src len start-c]
       (let-do [c @start-c]
-        (while-do (and
-            (Int.< @(Cursor.pos &c) len)
+        (while-do (and (Int.< @(Cursor.pos &c) len)
             (let [ch (String.char-at src @(Cursor.pos &c))]
               (and (Char.>= ch \0) (Char.<= ch \9))))
           (set! c (Cursor.advance &c (String.char-at src @(Cursor.pos &c)))))
@@ -916,9 +915,8 @@ handling, integers, identifiers, and literal symbols.")
     (private space?)
     (hidden space?)
     (defn space? [c]
-      (or
-        (or (Char.= c \space) (Char.= c \tab))
-        (or (Char.= c \newline) (Char.= c \return))))
+      (or (or (Char.= c \space) (Char.= c \tab))
+          (or (Char.= c \newline) (Char.= c \return))))
 
     (doc whitespace "consumes zero or more ASCII whitespace bytes (space,
 tab, CR, LF). Always succeeds; the result is unit.")
@@ -936,51 +934,50 @@ tab, CR, LF). Always succeeds; the result is unit.")
 `Int`. Fused into a single closure for performance — does not go
 through `bind`/`map`.")
     (defn unsigned-int []
-      (Parser.init
-        (fn [src len cur]
-          (let [start @(Cursor.pos cur)
-                c (scan-digits src len cur)]
-            (if (Int.> @(Cursor.pos &c) start)
-              (let [s (String.byte-slice src start @(Cursor.pos &c))
-                    n (match (Int.from-string &s)
-                      (Maybe.Just k) k
-                      (Maybe.Nothing) 0)]
-                (Reply.OkConsumed n c))
-              (Reply.ErrEmpty (ParseErr.expected-at cur @"integer")))))))
+      (Parser.init (fn [src len cur]
+                     (let [start @(Cursor.pos cur)
+                         c (scan-digits src len cur)]
+                       (if (Int.> @(Cursor.pos &c) start)
+                         (let [s (String.byte-slice src start @(Cursor.pos &c))
+                             n (match (Int.from-string &s)
+                               (Maybe.Just k) k
+                               (Maybe.Nothing) 0)]
+                           (Reply.OkConsumed n c))
+                         (Reply.ErrEmpty (ParseErr.expected-at cur @"integer")))))))
 
     (doc integer "parses an optional `-` sign followed by decimal
 digits as an `Int`. Fused into a single closure.")
     (defn integer []
-      (Parser.init
-        (fn [src len cur]
-          (let-do [c @cur
-                   negate? false]
-            (when-do (and
-                (Int.< @(Cursor.pos &c) len)
-                (Char.= (String.char-at src @(Cursor.pos &c)) \-))
-              (set! c (Cursor.advance &c \-))
-              (set! negate? true))
-            (let [digit-start @(Cursor.pos &c)
-                  c2 (scan-digits src len &c)]
-              (if (Int.> @(Cursor.pos &c2) digit-start)
-                (let [s (String.byte-slice src digit-start @(Cursor.pos &c2))
-                      n (match (Int.from-string &s)
-                        (Maybe.Just k) k
-                        (Maybe.Nothing) 0)]
-                  (Reply.OkConsumed (if negate? (Int.neg n) n) c2))
-                ; Sign consumed but no digits: consumed-failure.
-                (if negate?
-                  (Reply.ErrConsumed (ParseErr.expected-at &c2 @"integer"))
-                  (Reply.ErrEmpty (ParseErr.expected-at cur @"integer")))))))))
+      (Parser.init (fn [src len cur]
+                     (let-do [c @cur
+                         negate? false]
+                       (when-do (and (Int.< @(Cursor.pos &c) len)
+                           (Char.= (String.char-at src @(Cursor.pos &c)) \-))
+                         (set! c (Cursor.advance &c \-))
+                         (set! negate? true))
+                       (let [digit-start @(Cursor.pos &c)
+                           c2 (scan-digits src len &c)]
+                         (if (Int.> @(Cursor.pos &c2) digit-start)
+                           (let [s (String.byte-slice src
+                                 digit-start
+                                 @(Cursor.pos &c2))
+                               n (match (Int.from-string &s)
+                                 (Maybe.Just k) k
+                                 (Maybe.Nothing) 0)]
+                             (Reply.OkConsumed (if negate? (Int.neg n) n) c2))
+                           ; Sign consumed but no digits: consumed-failure.
+                           (if negate?
+                             (Reply.ErrConsumed (ParseErr.expected-at &c2
+                                 @"integer"))
+                             (Reply.ErrEmpty (ParseErr.expected-at cur
+                                 @"integer")))))))))
 
     (doc identifier "parses a C-style identifier: a letter or
 underscore, followed by zero or more letters, digits, or underscores.
 Returns the matched text as a `String`.")
     (defn identifier []
-      (Parser.slice-of
-        (Parser.seq
-          (Parser.satisfy
-            (fn [c] (or (alpha? c) (Char.= c \_)))
+      (Parser.slice-of (Parser.seq (Parser.satisfy (fn [c]
+              (or (alpha? c) (Char.= c \_)))
             @"identifier start")
           (Parser.take-while (fn [c] (or (alnum? c) (Char.= c \_))))))))
 

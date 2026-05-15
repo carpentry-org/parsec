@@ -36,42 +36,37 @@
     (fmt "(%s)" &(String.join " " &parts))))
 
 (defn make-kv-pair []
-  (Parser.bind
-    (Parser.Lexer.lexeme (Parser.Lexer.identifier))
-    (fn [name]
-      (Parser.bind
-        (Parser.Lexer.symbol @"=")
-        (fn [_]
-          (Parser.map (Parser.Lexer.integer) (fn [n] (Pair.init @&name n))))))))
+  (Parser.bind (Parser.Lexer.lexeme (Parser.Lexer.identifier))
+               (fn [name]
+                 (Parser.bind (Parser.Lexer.symbol @"=")
+                   (fn [_]
+                     (Parser.map (Parser.Lexer.integer)
+                       (fn [n] (Pair.init @&name n))))))))
 
 (def p-kv (Parser.sep-by1 (make-kv-pair) (Parser.Lexer.symbol @";")))
 (def p-int-list (Parser.sep-by (Parser.Lexer.integer) (Parser.byte \,)))
 
-(deftype SExp (Sym [String]) (Lst [(Array (Box SExp))]))
+(deftype SExp
+  (Sym [String])
+  (Lst [(Array (Box SExp))]))
 
 (def *sexp* (the (Parser SExp) (Parser.placeholder)))
 
 (defn sym-char? [c]
-  (not
-    (or
-      (Char.= c \space)
-      (or
-        (Char.= c \tab)
-        (or (Char.= c \newline) (or (Char.= c \() (Char.= c \))))))))
+  (not (or (Char.= c \space)
+           (or (Char.= c \tab)
+               (or (Char.= c \newline) (or (Char.= c \() (Char.= c \))))))))
 
 (defn sym-p []
-  (Parser.map
-    (Parser.Lexer.lexeme (Parser.take-while1 (fn [c] (sym-char? c))))
-    (fn [s] (SExp.Sym s))))
+  (Parser.map (Parser.Lexer.lexeme (Parser.take-while1 (fn [c] (sym-char? c))))
+              (fn [s] (SExp.Sym s))))
 
 (defn list-p []
-  (Parser.map
-    (Parser.Lexer.lexeme
-      (Parser.between
-        (Parser.byte \()
-        (Parser.byte \))
-        (Parser.many (Parser.map (Parser.recurse &*sexp*) (fn [s] (Box.init s))))))
-    (fn [items] (SExp.Lst items))))
+  (Parser.map (Parser.Lexer.lexeme (Parser.between (Parser.byte \()
+                  (Parser.byte \))
+                  (Parser.many (Parser.map (Parser.recurse &*sexp*)
+                      (fn [s] (Box.init s))))))
+              (fn [items] (SExp.Lst items))))
 
 (def -init-sexp (do (set! *sexp* (Parser.alt (sym-p) (list-p))) 0))
 

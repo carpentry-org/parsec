@@ -11,13 +11,12 @@
 ; One key-value pair, monadic style: capture identifier and integer,
 ; discard the '=' separator.
 (defn pair []
-  (Parser.bind
-    (Parser.Lexer.lexeme (Parser.Lexer.identifier))
-    (fn [name]
-      (Parser.bind
-        (Parser.Lexer.symbol @"=")
-        (fn [_]
-          (Parser.map (Parser.Lexer.integer) (fn [n] (Pair.init @&name n))))))))
+  (Parser.bind (Parser.Lexer.lexeme (Parser.Lexer.identifier))
+               (fn [name]
+                 (Parser.bind (Parser.Lexer.symbol @"=")
+                   (fn [_]
+                     (Parser.map (Parser.Lexer.integer)
+                       (fn [n] (Pair.init @&name n))))))))
 
 ; Whole config: pairs separated by ';' (with optional whitespace via lexeme).
 (defn config [] (Parser.sep-by1 (pair) (Parser.Lexer.symbol @";")))

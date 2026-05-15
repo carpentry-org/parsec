@@ -11,7 +11,9 @@
 
 (load "../parsec.carp")
 
-(deftype SExp (Sym [String]) (Lst [(Array (Box SExp))]))
+(deftype SExp
+  (Sym [String])
+  (Lst [(Array (Box SExp))]))
 
 (defmodule SExp
   (defn str [s]
@@ -22,40 +24,32 @@
           (for [i 0 (Array.length items)]
             (do
               (when (Int.> i 0) (set! out (String.append &out " ")))
-              (set!
-                out
-                (String.append
-                  &out
-                  &(SExp.str (Box.peek (Array.unsafe-nth items i)))))))
+              (set! out
+                    (String.append &out
+                      &(SExp.str (Box.peek (Array.unsafe-nth items i)))))))
           (String.append &out ")"))))
   (implements str SExp.str))
 
 ; Lisp symbols are any run of non-whitespace, non-paren bytes.
 (defn symbol-char? [c]
-  (not
-    (or
-      (Char.= c \space)
-      (or
-        (Char.= c \tab)
-        (or (Char.= c \newline) (or (Char.= c \() (Char.= c \))))))))
+  (not (or (Char.= c \space)
+           (or (Char.= c \tab)
+               (or (Char.= c \newline) (or (Char.= c \() (Char.= c \))))))))
 
 ; Forward-declare sexp so list-p can reference it inside `lazy`.
 (sig sexp (Fn [] (Parser SExp)))
 
 (defn symbol-p []
-  (Parser.map
-    (Parser.Lexer.lexeme
-      (Parser.label @"symbol" (Parser.take-while1 (fn [c] (symbol-char? c)))))
-    (fn [s] (SExp.Sym s))))
+  (Parser.map (Parser.Lexer.lexeme (Parser.label @"symbol"
+                  (Parser.take-while1 (fn [c] (symbol-char? c)))))
+              (fn [s] (SExp.Sym s))))
 
 (defn list-p []
-  (Parser.map
-    (Parser.Lexer.lexeme
-      (Parser.between
-        (Parser.Lexer.symbol @"(")
-        (Parser.Lexer.symbol @")")
-        (Parser.many (Parser.lazy (fn [] (sexp))))))
-    (fn [items] (SExp.Lst (Array.copy-map &(fn [s] (Box.init @s)) &items)))))
+  (Parser.map (Parser.Lexer.lexeme (Parser.between (Parser.Lexer.symbol @"(")
+                  (Parser.Lexer.symbol @")")
+                  (Parser.many (Parser.lazy (fn [] (sexp))))))
+              (fn [items]
+                (SExp.Lst (Array.copy-map &(fn [s] (Box.init @s)) &items)))))
 
 (defn sexp [] (Parser.alt (symbol-p) (list-p)))
 

@@ -66,13 +66,12 @@
 (def -kv-semi (the (Parser String) (Parser.placeholder)))
 
 (defn make-kv-pair []
-  (Parser.bind
-    (Parser.recurse &-kv-id)
-    (fn [name]
-      (Parser.bind
-        (Parser.recurse &-kv-eq)
-        (fn [_]
-          (Parser.map (Parser.recurse &-kv-int) (fn [n] (Pair.init @&name n))))))))
+  (Parser.bind (Parser.recurse &-kv-id)
+               (fn [name]
+                 (Parser.bind (Parser.recurse &-kv-eq)
+                   (fn [_]
+                     (Parser.map (Parser.recurse &-kv-int)
+                       (fn [n] (Pair.init @&name n))))))))
 
 (def p-kv (the (Parser (Array (Pair String Int))) (Parser.placeholder)))
 
@@ -89,31 +88,27 @@
 
 ; --- s-expression ---
 (defn sym-char? [c]
-  (not
-    (or
-      (Char.= c \space)
-      (or
-        (Char.= c \tab)
-        (or (Char.= c \newline) (or (Char.= c \() (Char.= c \))))))))
+  (not (or (Char.= c \space)
+           (or (Char.= c \tab)
+               (or (Char.= c \newline) (or (Char.= c \() (Char.= c \))))))))
 
-(deftype SExp (Sym [String]) (Lst [(Array (Box SExp))]))
+(deftype SExp
+  (Sym [String])
+  (Lst [(Array (Box SExp))]))
 
 ; Pre-built recursive parser via Parser.recurse against a stable cell.
 (def *sexp* (the (Parser SExp) (Parser.placeholder)))
 
 (defn sym-p []
-  (Parser.map
-    (Parser.Lexer.lexeme (Parser.take-while1 (fn [c] (sym-char? c))))
-    (fn [s] (SExp.Sym s))))
+  (Parser.map (Parser.Lexer.lexeme (Parser.take-while1 (fn [c] (sym-char? c))))
+              (fn [s] (SExp.Sym s))))
 
 (defn list-p []
-  (Parser.map
-    (Parser.Lexer.lexeme
-      (Parser.between
-        (Parser.byte \()
-        (Parser.byte \))
-        (Parser.many (Parser.map (Parser.recurse &*sexp*) (fn [s] (Box.init s))))))
-    (fn [items] (SExp.Lst items))))
+  (Parser.map (Parser.Lexer.lexeme (Parser.between (Parser.byte \()
+                  (Parser.byte \))
+                  (Parser.many (Parser.map (Parser.recurse &*sexp*)
+                      (fn [s] (Box.init s))))))
+              (fn [items] (SExp.Lst items))))
 
 (defn init-sexp [] (set! *sexp* (Parser.alt (sym-p) (list-p))))
 
