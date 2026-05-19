@@ -3,6 +3,30 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- `Parser.parse-partial p src` — runs `p` without requiring it to
+  consume all input. Returns `(Result (Pair a String) ParseErr)`
+  where the `String` is the unconsumed remainder.
+
+### Fixed
+- `Parser.satisfy` now populates `ParseErr.unexpected` with the
+  actual byte seen when the predicate fails, so error messages
+  report "unexpected 'x'; expected digit" instead of only the
+  expected label.
+- `Parser.eof` now populates `ParseErr.unexpected` with the byte
+  seen when the input is not at end.
+
+### Tests
+- Added tests for `Parser.then`, `Parser.before`, and
+  `Parser.bind-result` (shipped in 0.2.0 with no coverage).
+- Added edge case tests: `count 0`, `take 0`, `sep-by1` with
+  trailing separator, 4-byte UTF-8 codepoint (`U+1F600`).
+- Added tests verifying `unexpected` appears in `satisfy` and
+  `eof` error messages.
+- Added tests for `Parser.parse-partial`.
+
 ## [0.2.0]
 
 ### Added
