@@ -725,4 +725,157 @@
     (err? &(Parser.parse (Parser.UTF8.any-char)
                          &(String.from-bytes &[(Byte.from-int 0x80)])))
     "utf8: lone continuation byte fails empty")
+
+  ; ----------------------------------------
+  ; then
+  ; ----------------------------------------
+
+  (assert-equal test \b
+    (match (Parser.parse (Parser.then (Parser.byte \a) (Parser.byte \b)) "ab")
+      (Result.Success v) v
+      (Result.Error _)   \x)
+    "then returns second parser's value")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.then (Parser.byte \a) (Parser.byte \b)) "ax"))
+    "then fails when second parser fails")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.then (Parser.byte \a) (Parser.byte \b)) "b"))
+    "then fails when first parser fails")
+
+  ; ----------------------------------------
+  ; before
+  ; ----------------------------------------
+
+  (assert-equal test \a
+    (match (Parser.parse (Parser.before (Parser.byte \a) (Parser.byte \b)) "ab")
+      (Result.Success v) v
+      (Result.Error _)   \x)
+    "before returns first parser's value")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.before (Parser.byte \a) (Parser.byte \b)) "ax"))
+    "before fails when second parser fails")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.before (Parser.byte \a) (Parser.byte \b)) "b"))
+    "before fails when first parser fails")
+
+  ; ----------------------------------------
+  ; bind-result
+  ; ----------------------------------------
+
+  (assert-equal test 65
+    (match (Parser.parse
+             (Parser.bind-result (Parser.byte \A)
+               (fn [c cur] (the (Result Int ParseErr)
+                             (Result.Success (Char.to-int c)))))
+             "A")
+      (Result.Success v) v
+      (Result.Error _)   0)
+    "bind-result: success maps value through Result-returning function")
+
+  (assert-true test
+    (err? &(Parser.parse
+             (Parser.bind-result (Parser.byte \A)
+               (fn [c cur] (the (Result Int ParseErr)
+                             (Result.Error (ParseErr.expected-at cur @"rejected")))))
+             "A"))
+    "bind-result: Result.Error propagates as parse failure")
+
+  ; ----------------------------------------
+  ; parse-partial
+  ; ----------------------------------------
+
+  (assert-true test
+    (match (Parser.parse-partial (Parser.byte \a) "abc")
+      (Result.Success p)
+        (and (= \a @(Pair.a &p)) (= "bc" (Pair.b &p)))
+      _ false)
+    "parse-partial returns value and remaining input")
+
+  (assert-true test
+    (match (Parser.parse-partial (Parser.string @"abc") "abc")
+      (Result.Success p)
+        (and (= "abc" (Pair.a &p)) (= "" (Pair.b &p)))
+      _ false)
+    "parse-partial: full consumption yields empty remaining")
+
+  (assert-true test
+    (err? &(Parser.parse-partial (Parser.byte \a) "xyz"))
+    "parse-partial: error on mismatch")
+
+  (assert-true test
+    (match (Parser.parse-partial (Parser.pure 42) "hello")
+      (Result.Success p)
+        (and (= 42 @(Pair.a &p)) (= "hello" (Pair.b &p)))
+      _ false)
+    "parse-partial: pure consumes nothing, all input remains")
+
+  ; ----------------------------------------
+  ; count 0 (edge case)
+  ; ----------------------------------------
+
+  (assert-true test
+    (match (Parser.parse (Parser.count 0 (Parser.byte \a)) "")
+      (Result.Success arr) (= 0 (Array.length &arr))
+      _ false)
+    "count 0 succeeds with empty array on empty input")
+
+  ; ----------------------------------------
+  ; take 0 (edge case)
+  ; ----------------------------------------
+
+  (assert-equal test ""
+    &(match (Parser.parse (Parser.take 0) "")
+       (Result.Success s) s
+       (Result.Error _)   @"fail")
+    "take 0 succeeds with empty string on empty input")
+
+  ; ----------------------------------------
+  ; sep-by1 with trailing separator
+  ; ----------------------------------------
+
+  (assert-true test
+    (err? &(Parser.parse
+             (Parser.sep-by1 (Parser.byte \a) (Parser.byte \,))
+             "a,"))
+    "sep-by1: trailing separator causes consumed failure")
+
+  ; ----------------------------------------
+  ; UTF-8 4-byte codepoint
+  ; ----------------------------------------
+
+  (assert-true test
+    (match (Parser.parse
+             (Parser.UTF8.any-char)
+             &(String.from-bytes &[(Byte.from-int 0xf0)
+                                   (Byte.from-int 0x9f)
+                                   (Byte.from-int 0x98)
+                                   (Byte.from-int 0x80)]))
+      (Result.Success c) (= 128512 (Char.to-int c))
+      _ false)
+    "utf8: 4-byte codepoint (U+1F600 grinning face) decodes correctly")
+
+  ; ----------------------------------------
+  ; unexpected in error messages
+  ; ----------------------------------------
+
+  (assert-true test
+    (match (Parser.parse
+             (Parser.satisfy (fn [c] (and (Char.>= c \0) (Char.<= c \9)))
+                             @"digit")
+             "x")
+      (Result.Error e)
+        (String.contains-string? &(Parser.format-error &e) "unexpected")
+      _ false)
+    "satisfy: error message includes unexpected token")
+
+  (assert-true test
+    (match (Parser.parse (Parser.eof) "x")
+      (Result.Error e)
+        (String.contains-string? &(Parser.format-error &e) "unexpected")
+      _ false)
+    "eof: error message includes unexpected token when input remains")
 )

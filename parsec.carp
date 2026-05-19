@@ -149,7 +149,9 @@ that call `Parser.run` directly.")
     (Parser.init
       (fn [src len cur] (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl)))))
 
-  (doc satisfy "consumes one byte if `pred` holds, otherwise fails empty.")
+  (doc satisfy "consumes one byte if `pred` holds, otherwise fails empty.
+When the predicate rejects a byte, the error's `unexpected` field is
+populated with the byte that was seen.")
   (defn satisfy [pred lbl]
     (Parser.init
       (fn [src len cur]
@@ -159,7 +161,12 @@ that call `Parser.run` directly.")
             (let [c (String.char-at src pos)]
               (if (pred c)
                 (Reply.OkConsumed c (Cursor.advance cur c))
-                (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl)))))))))
+                (Reply.ErrEmpty
+                  (ParseErr.init @(Cursor.pos cur)
+                                 @(Cursor.line cur)
+                                 @(Cursor.col cur)
+                                 (Maybe.Just (fmt "'%c'" c))
+                                 (Expected.One @&lbl))))))))))
 
   (doc byte "consumes a specific byte (as `Char`). Fails empty if
 the input doesn't match or is at EOF.")
@@ -185,13 +192,21 @@ the input doesn't match or is at EOF.")
             (let [c (String.char-at src pos)]
               (Reply.OkConsumed c (Cursor.advance cur c))))))))
 
-  (doc eof "succeeds without consuming iff the cursor is at end of input.")
+  (doc eof "succeeds without consuming iff the cursor is at end of input.
+When the input is not at end, the error's `unexpected` field is
+populated with the byte that was seen.")
   (defn eof []
     (Parser.init
       (fn [src len cur]
         (if (Int.>= @(Cursor.pos cur) len)
           (Reply.OkEmpty () @cur)
-          (Reply.ErrEmpty (ParseErr.expected-at cur @"end of input"))))))
+          (let [c (String.char-at src @(Cursor.pos cur))]
+            (Reply.ErrEmpty
+              (ParseErr.init @(Cursor.pos cur)
+                             @(Cursor.line cur)
+                             @(Cursor.col cur)
+                             (Maybe.Just (fmt "'%c'" c))
+                             (Expected.One @"end of input"))))))))
 
   (doc map "applies `f` to the value produced by `p`.")
   (defn map [p f]
@@ -1019,4 +1034,21 @@ doesn't consume all of `src`. Returns `(Result a ParseErr)`.")
         (Reply.OkEmpty v c)
           (if (Int.>= @(Cursor.pos &c) len)
             (Result.Success v)
-            (Result.Error (ParseErr.expected-at &c @"end of input")))))))
+            (Result.Error (ParseErr.expected-at &c @"end of input"))))))
+
+  (doc parse-partial "runs `p` on the input without requiring it to
+consume everything. On success, returns a `Pair` of the parsed value
+and the remaining unconsumed input as a `String`. On error, returns
+the `ParseErr`.")
+  (defn parse-partial [p src]
+    (let [len (String.length src)
+          cur (Cursor.zero)]
+      (match (~(Parser.run &p) src len &cur)
+        (Reply.ErrConsumed e) (Result.Error e)
+        (Reply.ErrEmpty e) (Result.Error e)
+        (Reply.OkConsumed v c)
+          (Result.Success
+            (Pair.init v (String.byte-slice src @(Cursor.pos &c) len)))
+        (Reply.OkEmpty v c)
+          (Result.Success
+            (Pair.init v (String.byte-slice src @(Cursor.pos &c) len)))))))
