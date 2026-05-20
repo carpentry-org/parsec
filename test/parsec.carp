@@ -340,6 +340,78 @@
     "many1 collects when at least one match")
 
   ; ----------------------------------------
+  ; skip-many
+  ; ----------------------------------------
+
+  (assert-true test
+    (ok? &(Parser.parse
+            (Parser.then (Parser.skip-many (Parser.byte \a)) (Parser.eof))
+            "aaaa"))
+    "skip-many consumes matching input and returns unit")
+
+  (assert-true test
+    (ok? &(Parser.parse
+            (Parser.then (Parser.skip-many (Parser.byte \a)) (Parser.eof))
+            ""))
+    "skip-many on empty input succeeds with unit")
+
+  (assert-true test
+    (ok? &(Parser.parse
+            (Parser.then (Parser.skip-many (Parser.byte \a)) (Parser.byte \b))
+            "b"))
+    "skip-many with no matches succeeds and leaves input for next parser")
+
+  ; ----------------------------------------
+  ; skip-many1
+  ; ----------------------------------------
+
+  (assert-true test
+    (ok? &(Parser.parse
+            (Parser.then (Parser.skip-many1 (Parser.byte \a)) (Parser.eof))
+            "aaa"))
+    "skip-many1 succeeds with one or more matches")
+
+  (assert-true test
+    (err? &(Parser.parse
+             (Parser.skip-many1 (Parser.byte \a))
+             ""))
+    "skip-many1 fails on empty input (no match)")
+
+  (assert-true test
+    (err? &(Parser.parse
+             (Parser.skip-many1 (Parser.byte \a))
+             "b"))
+    "skip-many1 fails when first application of p fails")
+
+  ; ----------------------------------------
+  ; many-till
+  ; ----------------------------------------
+
+  (assert-true test
+    (match (Parser.parse
+             (Parser.many-till (Parser.byte \a) (Parser.byte \b))
+             "aaab")
+      (Result.Success arr) (= 3 (Array.length &arr))
+      _ false)
+    "many-till collects p results until end succeeds")
+
+  (assert-true test
+    (match (Parser.parse
+             (Parser.many-till (Parser.byte \a) (Parser.byte \b))
+             "b")
+      (Result.Success arr) (= 0 (Array.length &arr))
+      _ false)
+    "many-till: empty collection when end matches immediately")
+
+  (assert-true test
+    (match (Parser.parse
+             (Parser.many-till (Parser.any-byte) (Parser.string @"end"))
+             "xyend")
+      (Result.Success arr) (= 2 (Array.length &arr))
+      _ false)
+    "many-till: collects items before multi-byte terminator")
+
+  ; ----------------------------------------
   ; between
   ; ----------------------------------------
 
