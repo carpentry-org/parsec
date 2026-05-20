@@ -861,6 +861,62 @@ the first attempt.")
           (Reply.OkConsumed v1 c1) (chainl1-loop &p &op src len c1 v1 true)
           (Reply.OkEmpty v1 c1) (chainl1-loop &p &op src len c1 v1 false)))))
 
+  (private chainr1-loop)
+  (hidden chainr1-loop)
+  ; Like chainl1-loop but collects values and operators into arrays,
+  ; then right-folds at the end. consumed-any is included for
+  ; structural consistency with chainl1-loop; in practice it is always
+  ; true because the first p already consumed input before entering
+  ; the loop.
+  (defn chainr1-loop [p op src len start-cur start-val start-consumed]
+    (let-do [vals [start-val]
+             ops []
+             c start-cur
+             err (the (Maybe ParseErr) (Maybe.Nothing))
+             consumed-any start-consumed
+             going true]
+      (while-do going
+        (match (~(Parser.run op) src len &c)
+          (Reply.ErrEmpty _) (set! going false)
+          (Reply.OkEmpty _ _) (set! going false)
+          (Reply.ErrConsumed e2)
+            (do
+              (set! err (Maybe.Just e2))
+              (set! consumed-any true)
+              (set! going false))
+          (Reply.OkConsumed f c-after-op)
+            (do
+              (set! consumed-any true)
+              (match (~(Parser.run p) src len &c-after-op)
+                (Reply.OkConsumed v c2)
+                  (do
+                    (set! ops (Array.push-back ops f))
+                    (set! vals (Array.push-back vals v))
+                    (set! c c2))
+                (Reply.OkEmpty v c2)
+                  (do
+                    (set! ops (Array.push-back ops f))
+                    (set! vals (Array.push-back vals v))
+                    (set! c c2))
+                (Reply.ErrEmpty e2)
+                  (do (set! err (Maybe.Just e2)) (set! going false))
+                (Reply.ErrConsumed e2)
+                  (do (set! err (Maybe.Just e2)) (set! going false))))))
+      (match err
+        (Maybe.Just e)
+        (if consumed-any (Reply.ErrConsumed e) (Reply.ErrEmpty e))
+        (Maybe.Nothing)
+        ; Right-fold: apply ops from right to left
+        (let-do [n (Array.length &vals)
+                 acc @(Array.unsafe-nth &vals (Int.dec n))
+                 i (Int.- n 2)]
+          (while-do (Int.>= i 0)
+            (let [f @(Array.unsafe-nth &ops i)
+                  v @(Array.unsafe-nth &vals i)]
+              (set! acc (f v acc)))
+            (set! i (Int.dec i)))
+          (if consumed-any (Reply.OkConsumed acc c) (Reply.OkEmpty acc c))))))
+
   (doc chainr1 "parses one or more occurrences of `p` separated by
 `op`. `op` returns a binary function used to combine values
 right-associatively. Example: with exponentiation as `op`,
@@ -871,49 +927,8 @@ right-associatively. Example: with exponentiation as `op`,
         (match (~(Parser.run &p) src len cur)
           (Reply.ErrEmpty e) (Reply.ErrEmpty e)
           (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-          (Reply.OkConsumed v1 c1)
-            (let-do [vals [v1]
-                     ops []
-                     c c1
-                     err (the (Maybe ParseErr) (Maybe.Nothing))
-                     going true]
-              (while-do going
-                (match (~(Parser.run &op) src len &c)
-                  (Reply.ErrEmpty _) (set! going false)
-                  (Reply.OkEmpty _ _) (set! going false)
-                  (Reply.ErrConsumed e2)
-                    (do (set! err (Maybe.Just e2)) (set! going false))
-                  (Reply.OkConsumed f c-after-op)
-                    (match (~(Parser.run &p) src len &c-after-op)
-                      (Reply.OkConsumed v c2)
-                        (do
-                          (set! ops (Array.push-back ops f))
-                          (set! vals (Array.push-back vals v))
-                          (set! c c2))
-                      (Reply.OkEmpty v c2)
-                        (do
-                          (set! ops (Array.push-back ops f))
-                          (set! vals (Array.push-back vals v))
-                          (set! c c2))
-                      (Reply.ErrEmpty e2)
-                        (do (set! err (Maybe.Just e2)) (set! going false))
-                      (Reply.ErrConsumed e2)
-                        (do (set! err (Maybe.Just e2)) (set! going false)))))
-              (match err
-                (Maybe.Just e)
-                (Reply.ErrConsumed e)
-                (Maybe.Nothing)
-                ; Right-fold: apply ops from right to left
-                (let-do [n (Array.length &vals)
-                         acc @(Array.unsafe-nth &vals (Int.dec n))
-                         i (Int.- n 2)]
-                  (while-do (Int.>= i 0)
-                    (let [f @(Array.unsafe-nth &ops i)
-                          v @(Array.unsafe-nth &vals i)]
-                      (set! acc (f v acc)))
-                    (set! i (Int.dec i)))
-                  (Reply.OkConsumed acc c))))
-          (Reply.OkEmpty v1 c1) (Reply.OkEmpty v1 c1)))))
+          (Reply.OkConsumed v1 c1) (chainr1-loop &p &op src len c1 v1 true)
+          (Reply.OkEmpty v1 c1) (chainr1-loop &p &op src len c1 v1 false)))))
 
   (doc chainr "like `chainr1` but returns `default` if `p` fails on
 the first attempt.")
@@ -923,47 +938,8 @@ the first attempt.")
         (match (~(Parser.run &p) src len cur)
           (Reply.ErrEmpty _) (Reply.OkEmpty @&default @cur)
           (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-          (Reply.OkConsumed v1 c1)
-            (let-do [vals [v1]
-                     ops []
-                     c c1
-                     err (the (Maybe ParseErr) (Maybe.Nothing))
-                     going true]
-              (while-do going
-                (match (~(Parser.run &op) src len &c)
-                  (Reply.ErrEmpty _) (set! going false)
-                  (Reply.OkEmpty _ _) (set! going false)
-                  (Reply.ErrConsumed e2)
-                    (do (set! err (Maybe.Just e2)) (set! going false))
-                  (Reply.OkConsumed f c-after-op)
-                    (match (~(Parser.run &p) src len &c-after-op)
-                      (Reply.OkConsumed v c2)
-                        (do
-                          (set! ops (Array.push-back ops f))
-                          (set! vals (Array.push-back vals v))
-                          (set! c c2))
-                      (Reply.OkEmpty v c2)
-                        (do
-                          (set! ops (Array.push-back ops f))
-                          (set! vals (Array.push-back vals v))
-                          (set! c c2))
-                      (Reply.ErrEmpty e2)
-                        (do (set! err (Maybe.Just e2)) (set! going false))
-                      (Reply.ErrConsumed e2)
-                        (do (set! err (Maybe.Just e2)) (set! going false)))))
-              (match err
-                (Maybe.Just e) (Reply.ErrConsumed e)
-                (Maybe.Nothing)
-                  (let-do [n (Array.length &vals)
-                           acc @(Array.unsafe-nth &vals (Int.dec n))
-                           i (Int.- n 2)]
-                    (while-do (Int.>= i 0)
-                      (let [f @(Array.unsafe-nth &ops i)
-                            v @(Array.unsafe-nth &vals i)]
-                        (set! acc (f v acc)))
-                      (set! i (Int.dec i)))
-                    (Reply.OkConsumed acc c))))
-          (Reply.OkEmpty v1 c1) (Reply.OkEmpty v1 c1)))))
+          (Reply.OkConsumed v1 c1) (chainr1-loop &p &op src len c1 v1 true)
+          (Reply.OkEmpty v1 c1) (chainr1-loop &p &op src len c1 v1 false)))))
 
   (doc slice-of "runs `p`; on success, replaces `p`'s value with
 the slice of input that `p` consumed (as a `String`). On failure,
