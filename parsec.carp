@@ -804,6 +804,167 @@ their expected sets. A consumed failure of any parser short-circuits
                              (Expected.Many labels)))
             result)))))
 
+  (private chainl1-loop)
+  (hidden chainl1-loop)
+  (defn chainl1-loop [p op src len start-cur start-val start-consumed]
+    (let-do [c start-cur
+             acc start-val
+             err (the (Maybe ParseErr) (Maybe.Nothing))
+             consumed-any start-consumed
+             going true]
+      (while-do going
+        (match (~(Parser.run op) src len &c)
+          (Reply.ErrEmpty _) (set! going false)
+          (Reply.OkEmpty _ _) (set! going false)
+          (Reply.ErrConsumed e2)
+            (do
+              (set! err (Maybe.Just e2))
+              (set! consumed-any true)
+              (set! going false))
+          (Reply.OkConsumed f c-after-op)
+            (do
+              (set! consumed-any true)
+              (match (~(Parser.run p) src len &c-after-op)
+                (Reply.OkConsumed v c2) (do (set! acc (f acc v)) (set! c c2))
+                (Reply.OkEmpty v c2) (do (set! acc (f acc v)) (set! c c2))
+                (Reply.ErrEmpty e2)
+                  (do (set! err (Maybe.Just e2)) (set! going false))
+                (Reply.ErrConsumed e2)
+                  (do (set! err (Maybe.Just e2)) (set! going false))))))
+      (match err
+        (Maybe.Just e)
+          (if consumed-any (Reply.ErrConsumed e) (Reply.ErrEmpty e))
+        (Maybe.Nothing)
+          (if consumed-any (Reply.OkConsumed acc c) (Reply.OkEmpty acc c)))))
+
+  (doc chainl1 "parses one or more occurrences of `p` separated by
+`op`. `op` returns a binary function used to combine values
+left-associatively. Example: `(chainl1 (Lexer.integer) add-op)`
+parses `1+2+3` as `((1+2)+3)`.")
+  (defn chainl1 [p op]
+    (Parser.init
+      (fn [src len cur]
+        (match (~(Parser.run &p) src len cur)
+          (Reply.ErrEmpty e) (Reply.ErrEmpty e)
+          (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+          (Reply.OkConsumed v1 c1) (chainl1-loop &p &op src len c1 v1 true)
+          (Reply.OkEmpty v1 c1) (chainl1-loop &p &op src len c1 v1 false)))))
+
+  (doc chainl "like `chainl1` but returns `default` if `p` fails on
+the first attempt.")
+  (defn chainl [p op default]
+    (Parser.init
+      (fn [src len cur]
+        (match (~(Parser.run &p) src len cur)
+          (Reply.ErrEmpty _) (Reply.OkEmpty @&default @cur)
+          (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+          (Reply.OkConsumed v1 c1) (chainl1-loop &p &op src len c1 v1 true)
+          (Reply.OkEmpty v1 c1) (chainl1-loop &p &op src len c1 v1 false)))))
+
+  (doc chainr1 "parses one or more occurrences of `p` separated by
+`op`. `op` returns a binary function used to combine values
+right-associatively. Example: with exponentiation as `op`,
+`2^3^2` parses as `2^(3^2) = 512`.")
+  (defn chainr1 [p op]
+    (Parser.init
+      (fn [src len cur]
+        (match (~(Parser.run &p) src len cur)
+          (Reply.ErrEmpty e) (Reply.ErrEmpty e)
+          (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+          (Reply.OkConsumed v1 c1)
+            (let-do [vals [v1]
+                     ops []
+                     c c1
+                     err (the (Maybe ParseErr) (Maybe.Nothing))
+                     going true]
+              (while-do going
+                (match (~(Parser.run &op) src len &c)
+                  (Reply.ErrEmpty _) (set! going false)
+                  (Reply.OkEmpty _ _) (set! going false)
+                  (Reply.ErrConsumed e2)
+                    (do (set! err (Maybe.Just e2)) (set! going false))
+                  (Reply.OkConsumed f c-after-op)
+                    (match (~(Parser.run &p) src len &c-after-op)
+                      (Reply.OkConsumed v c2)
+                        (do
+                          (set! ops (Array.push-back ops f))
+                          (set! vals (Array.push-back vals v))
+                          (set! c c2))
+                      (Reply.OkEmpty v c2)
+                        (do
+                          (set! ops (Array.push-back ops f))
+                          (set! vals (Array.push-back vals v))
+                          (set! c c2))
+                      (Reply.ErrEmpty e2)
+                        (do (set! err (Maybe.Just e2)) (set! going false))
+                      (Reply.ErrConsumed e2)
+                        (do (set! err (Maybe.Just e2)) (set! going false)))))
+              (match err
+                (Maybe.Just e)
+                (Reply.ErrConsumed e)
+                (Maybe.Nothing)
+                ; Right-fold: apply ops from right to left
+                (let-do [n (Array.length &vals)
+                         acc @(Array.unsafe-nth &vals (Int.dec n))
+                         i (Int.- n 2)]
+                  (while-do (Int.>= i 0)
+                    (let [f @(Array.unsafe-nth &ops i)
+                          v @(Array.unsafe-nth &vals i)]
+                      (set! acc (f v acc)))
+                    (set! i (Int.dec i)))
+                  (Reply.OkConsumed acc c))))
+          (Reply.OkEmpty v1 c1) (Reply.OkEmpty v1 c1)))))
+
+  (doc chainr "like `chainr1` but returns `default` if `p` fails on
+the first attempt.")
+  (defn chainr [p op default]
+    (Parser.init
+      (fn [src len cur]
+        (match (~(Parser.run &p) src len cur)
+          (Reply.ErrEmpty _) (Reply.OkEmpty @&default @cur)
+          (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+          (Reply.OkConsumed v1 c1)
+            (let-do [vals [v1]
+                     ops []
+                     c c1
+                     err (the (Maybe ParseErr) (Maybe.Nothing))
+                     going true]
+              (while-do going
+                (match (~(Parser.run &op) src len &c)
+                  (Reply.ErrEmpty _) (set! going false)
+                  (Reply.OkEmpty _ _) (set! going false)
+                  (Reply.ErrConsumed e2)
+                    (do (set! err (Maybe.Just e2)) (set! going false))
+                  (Reply.OkConsumed f c-after-op)
+                    (match (~(Parser.run &p) src len &c-after-op)
+                      (Reply.OkConsumed v c2)
+                        (do
+                          (set! ops (Array.push-back ops f))
+                          (set! vals (Array.push-back vals v))
+                          (set! c c2))
+                      (Reply.OkEmpty v c2)
+                        (do
+                          (set! ops (Array.push-back ops f))
+                          (set! vals (Array.push-back vals v))
+                          (set! c c2))
+                      (Reply.ErrEmpty e2)
+                        (do (set! err (Maybe.Just e2)) (set! going false))
+                      (Reply.ErrConsumed e2)
+                        (do (set! err (Maybe.Just e2)) (set! going false)))))
+              (match err
+                (Maybe.Just e) (Reply.ErrConsumed e)
+                (Maybe.Nothing)
+                  (let-do [n (Array.length &vals)
+                           acc @(Array.unsafe-nth &vals (Int.dec n))
+                           i (Int.- n 2)]
+                    (while-do (Int.>= i 0)
+                      (let [f @(Array.unsafe-nth &ops i)
+                            v @(Array.unsafe-nth &vals i)]
+                        (set! acc (f v acc)))
+                      (set! i (Int.dec i)))
+                    (Reply.OkConsumed acc c))))
+          (Reply.OkEmpty v1 c1) (Reply.OkEmpty v1 c1)))))
+
   (doc slice-of "runs `p`; on success, replaces `p`'s value with
 the slice of input that `p` consumed (as a `String`). On failure,
 propagates as-is.")
@@ -1077,7 +1238,76 @@ Returns the matched text as a `String`.")
         (Parser.seq
           (Parser.satisfy (fn [c] (or (alpha? c) (Char.= c \_)))
                           @"identifier start")
-          (Parser.take-while (fn [c] (or (alnum? c) (Char.= c \_))))))))
+          (Parser.take-while (fn [c] (or (alnum? c) (Char.= c \_)))))))
+
+    (doc float "parses a floating-point number and returns a `Double`.
+Handles optional leading `-`, integer part, decimal point with
+fractional digits, and optional exponent (`e`/`E` with optional
+sign). At least one digit must appear in the integer or fractional
+part. Uses `slice-of` and `Double.from-string` for conversion.")
+    (defn float []
+      (Parser.bind-result
+        (Parser.slice-of
+          (Parser.init
+            (fn [src len cur]
+              (let-do [c @cur
+                       consumed false]
+                ; optional minus
+                (when-do (and (Int.< @(Cursor.pos &c) len)
+                              (Char.= (String.char-at src @(Cursor.pos &c)) \-))
+                  (set! c (Cursor.advance &c \-))
+                  (set! consumed true))
+                ; integer part (digits before dot)
+                (let-do [before-int @(Cursor.pos &c)
+                         c2 (scan-digits src len &c)
+                         has-int (Int.> @(Cursor.pos &c2) before-int)]
+                  (when-do has-int (set! c c2) (set! consumed true))
+                  ; optional fractional part: '.' digits
+                  (let-do [has-frac false]
+                    (when-do (and (Int.< @(Cursor.pos &c) len)
+                                  (Char.= (String.char-at src @(Cursor.pos &c))
+                                          \.))
+                      (let-do [c-dot (Cursor.advance &c \.)
+                               c3 (scan-digits src len &c-dot)]
+                        (when-do (Int.> @(Cursor.pos &c3) @(Cursor.pos &c-dot))
+                          (set! c c3)
+                          (set! consumed true)
+                          (set! has-frac true))))
+                    (if (not (or has-int has-frac))
+                      ; no digits at all
+                      (if consumed
+                        (Reply.ErrConsumed (ParseErr.expected-at &c @"float"))
+                        (Reply.ErrEmpty (ParseErr.expected-at cur @"float")))
+                      (do
+                        ; optional exponent: [eE][+-]?digits
+                        (when-do (and (Int.< @(Cursor.pos &c) len)
+                                      (let [ch (String.char-at src
+                                                               @(Cursor.pos &c))]
+                                        (or (Char.= ch \e) (Char.= ch \E))))
+                          (let-do [c-e (Cursor.advance &c
+                                                       (String.char-at src
+                                                                       @(Cursor.pos &c)))]
+                            ; optional sign
+                            (when-do (and (Int.< @(Cursor.pos &c-e) len)
+                                          (let [ch (String.char-at src
+                                                                   @(Cursor.pos &c-e))]
+                                            (or (Char.= ch \+) (Char.= ch \-))))
+                              (set! c-e
+                                    (Cursor.advance &c-e
+                                                    (String.char-at src
+                                                                    @(Cursor.pos &c-e)))))
+                            (let [c4 (scan-digits src len &c-e)]
+                              (when (Int.> @(Cursor.pos &c4) @(Cursor.pos &c-e))
+                                (set! c c4)))))
+                        (if consumed
+                          (Reply.OkConsumed () c)
+                          (Reply.OkEmpty () c))))))))))
+        (fn [s cur]
+          (the (Result Double ParseErr)
+               (match (Double.from-string &s)
+                 (Maybe.Just d) (Result.Success d)
+                 (Maybe.Nothing)
+                   (Result.Error (ParseErr.expected-at cur @"float"))))))))
 
   (doc format-error "renders a `ParseErr` as a human-readable
 `String`. Format: `parse error at LINE:COL: unexpected X; expected: Y, Z, W`.
