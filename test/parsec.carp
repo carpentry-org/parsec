@@ -416,6 +416,14 @@
       _ false)
     "many-till with multi-byte terminator")
 
+  (assert-true test
+    (match (Parser.parse
+             (Parser.many-till (Parser.pure 0) (Parser.byte \x))
+             "")
+      (Result.Success arr) (= 0 (Array.length &arr))
+      _ false)
+    "many-till terminates when p succeeds empty (no infinite loop)")
+
   ; ----------------------------------------
   ; between
   ; ----------------------------------------
