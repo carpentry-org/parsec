@@ -6,6 +6,12 @@ the project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `Parser.skip-many p` — runs `p` zero or more times, discarding
+  results. Returns `()` without allocating an array.
+- `Parser.skip-many1 p` — like `skip-many`, but requires at least
+  one match.
+- `Parser.many-till p end` — runs `p` zero or more times until
+  `end` succeeds, collecting `p`'s results into an `Array`.
 - `Parser.parse-partial p src` — runs `p` without requiring it to
   consume all input. Returns `(Result (Pair a String) ParseErr)`
   where the `String` is the unconsumed remainder.

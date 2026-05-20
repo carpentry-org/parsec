@@ -570,6 +570,107 @@ once.")
                 (Maybe.Nothing) (Reply.OkConsumed acc c)))
           (Reply.OkEmpty v1 c1) (Reply.OkEmpty [v1] c1)))))
 
+  (doc skip-many "runs `p` zero or more times, discarding results.
+Returns `()`. Unlike `many`, allocates no array — use in hot paths
+where you only care about advancing past repeated input (e.g.
+skipping whitespace or comments).")
+  (defn skip-many [p]
+    (Parser.init
+      (fn [src len cur]
+        (let-do [c @cur
+                 consumed-any false
+                 err (the (Maybe ParseErr) (Maybe.Nothing))
+                 going true]
+          (while-do going
+            (match (~(Parser.run &p) src len &c)
+              (Reply.OkConsumed _ c2) (do (set! c c2) (set! consumed-any true))
+              (Reply.OkEmpty _ _) (set! going false)
+              (Reply.ErrEmpty _) (set! going false)
+              (Reply.ErrConsumed e2)
+                (do (set! err (Maybe.Just e2)) (set! going false))))
+          (match err
+            (Maybe.Just e) (Reply.ErrConsumed e)
+            (Maybe.Nothing)
+              (if consumed-any (Reply.OkConsumed () c) (Reply.OkEmpty () c)))))))
+
+  (doc skip-many1 "runs `p` one or more times, discarding results.
+Returns `()`. Fails if `p` doesn’t match at least once.")
+  (defn skip-many1 [p]
+    (Parser.init
+      (fn [src len cur]
+        (match (~(Parser.run &p) src len cur)
+          (Reply.ErrEmpty e) (Reply.ErrEmpty e)
+          (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+          (Reply.OkConsumed _ c1)
+            (let-do [c c1
+                     err (the (Maybe ParseErr) (Maybe.Nothing))
+                     going true]
+              (while-do going
+                (match (~(Parser.run &p) src len &c)
+                  (Reply.OkConsumed _ c2) (set! c c2)
+                  (Reply.OkEmpty _ _) (set! going false)
+                  (Reply.ErrEmpty _) (set! going false)
+                  (Reply.ErrConsumed e2)
+                    (do (set! err (Maybe.Just e2)) (set! going false))))
+              (match err
+                (Maybe.Just e) (Reply.ErrConsumed e)
+                (Maybe.Nothing) (Reply.OkConsumed () c)))
+          (Reply.OkEmpty _ c1) (Reply.OkEmpty () c1)))))
+
+  (doc many-till "runs `p` zero or more times until `end` succeeds,
+collecting `p`’s results. At each iteration `end` is tried first;
+if it fails empty, `p` is tried. Returns an `Array` of values
+produced by `p`.
+
+Useful for scanning to a delimiter: for example, collecting characters
+until a closing tag, or gathering tokens until a terminator keyword.")
+  (defn many-till [p end]
+    (Parser.init
+      (fn [src len cur]
+        (let-do [acc []
+                 c @cur
+                 consumed-any false
+                 err (the (Maybe ParseErr) (Maybe.Nothing))
+                 end-cur @cur
+                 end-hit false
+                 going true]
+          (while-do going
+            (match (~(Parser.run &end) src len &c)
+              (Reply.OkConsumed _ c2)
+                (do
+                  (set! end-cur c2)
+                  (set! end-hit true)
+                  (set! consumed-any true)
+                  (set! going false))
+              (Reply.OkEmpty _ c2)
+                (do (set! end-cur c2) (set! end-hit true) (set! going false))
+              (Reply.ErrConsumed e)
+                (do
+                  (set! err (Maybe.Just e))
+                  (set! consumed-any true)
+                  (set! going false))
+              (Reply.ErrEmpty _)
+                (match (~(Parser.run &p) src len &c)
+                  (Reply.OkConsumed v c2)
+                    (do
+                      (set! acc (Array.push-back acc v))
+                      (set! c c2)
+                      (set! consumed-any true))
+                  (Reply.OkEmpty _ _) (set! going false)
+                  (Reply.ErrConsumed e2)
+                    (do (set! err (Maybe.Just e2)) (set! going false))
+                  (Reply.ErrEmpty e2)
+                    (do (set! err (Maybe.Just e2)) (set! going false)))))
+          (match err
+            (Maybe.Just e)
+              (if consumed-any (Reply.ErrConsumed e) (Reply.ErrEmpty e))
+            (Maybe.Nothing)
+              (if end-hit
+                (if consumed-any
+                  (Reply.OkConsumed acc end-cur)
+                  (Reply.OkEmpty acc end-cur))
+                (if consumed-any (Reply.OkConsumed acc c) (Reply.OkEmpty acc c))))))))
+
   (doc between "runs `open`, then `p`, then `close`, returning
 `p`'s value. Once `open` consumes, all subsequent failures are
 consumed failures.")

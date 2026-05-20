@@ -340,6 +340,83 @@
     "many1 collects when at least one match")
 
   ; ----------------------------------------
+  ; skip-many
+  ; ----------------------------------------
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.skip-many (Parser.byte \a)) ""))
+    "skip-many on empty input succeeds with ()")
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.skip-many (Parser.byte \a)) "aaaa"))
+    "skip-many consumes greedily")
+
+  (assert-true test
+    (ok? &(Parser.parse
+            (Parser.seq (Parser.skip-many (Parser.byte \a)) (Parser.byte \b))
+            "aaab"))
+    "skip-many stops at non-matching byte, leaving it for next parser")
+
+  ; ----------------------------------------
+  ; skip-many1
+  ; ----------------------------------------
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.skip-many1 (Parser.byte \a)) ""))
+    "skip-many1 fails on zero matches")
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.skip-many1 (Parser.byte \a)) "a"))
+    "skip-many1 succeeds with one match")
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.skip-many1 (Parser.byte \a)) "aaa"))
+    "skip-many1 succeeds with multiple matches")
+
+  (assert-true test
+    (ok? &(Parser.parse
+            (Parser.seq (Parser.skip-many1 (Parser.byte \a)) (Parser.byte \b))
+            "aab"))
+    "skip-many1 stops at non-matching byte, leaving it for next parser")
+
+  ; ----------------------------------------
+  ; many-till
+  ; ----------------------------------------
+
+  (assert-true test
+    (match (Parser.parse
+             (Parser.many-till (Parser.byte \a) (Parser.byte \z))
+             "aaaz")
+      (Result.Success arr) (= 3 (Array.length &arr))
+      _ false)
+    "many-till collects values until terminator")
+
+  (assert-true test
+    (match (Parser.parse
+             (Parser.many-till (Parser.byte \a) (Parser.byte \z))
+             "z")
+      (Result.Success arr) (= 0 (Array.length &arr))
+      _ false)
+    "many-till with immediate terminator yields empty array")
+
+  (assert-true test
+    (err? &(Parser.parse
+             (the (Parser (Array Char))
+               (Parser.many-till (Parser.byte \a) (Parser.byte \z)))
+             "aab"))
+    "many-till fails when neither end nor p matches")
+
+  (assert-true test
+    (match (Parser.parse
+             (Parser.seq
+               (Parser.many-till (Parser.any-byte) (Parser.string @"-->"))
+               (Parser.eof))
+             "hello-->")
+      (Result.Success p) (= 5 (Array.length (Pair.a &p)))
+      _ false)
+    "many-till with multi-byte terminator")
+
+  ; ----------------------------------------
   ; between
   ; ----------------------------------------
 
