@@ -6,9 +6,28 @@ the project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `Parser.skip-many p` — like `many` but discards all results,
+  returning `()`. Avoids building an `Array`, saving allocations.
+- `Parser.skip-many1 p` — like `many1` but discards results.
+  Fails if the first application of `p` fails.
+- `Parser.many-till p end` — repeats `p` until `end` succeeds,
+  collecting `p` results in an `Array`. Returns the array (not
+  the `end` result).
 - `Parser.parse-partial p src` — runs `p` without requiring it to
   consume all input. Returns `(Result (Pair a String) ParseErr)`
   where the `String` is the unconsumed remainder.
+- `Parser.chainl1 p op` — parse one or more occurrences of `p`
+  separated by `op`, folding left-associatively. `op` returns a
+  binary function.
+- `Parser.chainr1 p op` — like `chainl1` but folds
+  right-associatively.
+- `Parser.chainl p op default` — like `chainl1` but returns
+  `default` if `p` fails on the first attempt.
+- `Parser.chainr p op default` — like `chainr1` but returns
+  `default` if `p` fails on the first attempt.
+- `Parser.Lexer.float` — parses a floating-point number (optional
+  sign, integer/fractional digits, optional exponent) and returns
+  a `Double`.
 
 ### Fixed
 - `Parser.satisfy` now populates `ParseErr.unexpected` with the

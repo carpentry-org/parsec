@@ -43,6 +43,13 @@
 ; Side-effecting init via a dummy def — runs at module load.
 (def -r-init (do (set! *r-pair* (r-pair-impl)) 0))
 
+; Helper for chainr1 tests: integer exponentiation
+(defn ipow [base exp]
+  (let-do [acc 1]
+    (for [i 0 exp]
+      (set! acc (Int.* acc base)))
+    acc))
+
 (deftest test
   ; ----------------------------------------
   ; pure
@@ -338,6 +345,78 @@
       (Result.Success arr) (= 3 (Array.length &arr))
       _ false)
     "many1 collects when at least one match")
+
+  ; ----------------------------------------
+  ; skip-many
+  ; ----------------------------------------
+
+  (assert-true test
+    (ok? &(Parser.parse
+            (Parser.then (Parser.skip-many (Parser.byte \a)) (Parser.eof))
+            "aaaa"))
+    "skip-many consumes matching input and returns unit")
+
+  (assert-true test
+    (ok? &(Parser.parse
+            (Parser.then (Parser.skip-many (Parser.byte \a)) (Parser.eof))
+            ""))
+    "skip-many on empty input succeeds with unit")
+
+  (assert-true test
+    (ok? &(Parser.parse
+            (Parser.then (Parser.skip-many (Parser.byte \a)) (Parser.byte \b))
+            "b"))
+    "skip-many with no matches succeeds and leaves input for next parser")
+
+  ; ----------------------------------------
+  ; skip-many1
+  ; ----------------------------------------
+
+  (assert-true test
+    (ok? &(Parser.parse
+            (Parser.then (Parser.skip-many1 (Parser.byte \a)) (Parser.eof))
+            "aaa"))
+    "skip-many1 succeeds with one or more matches")
+
+  (assert-true test
+    (err? &(Parser.parse
+             (Parser.skip-many1 (Parser.byte \a))
+             ""))
+    "skip-many1 fails on empty input (no match)")
+
+  (assert-true test
+    (err? &(Parser.parse
+             (Parser.skip-many1 (Parser.byte \a))
+             "b"))
+    "skip-many1 fails when first application of p fails")
+
+  ; ----------------------------------------
+  ; many-till
+  ; ----------------------------------------
+
+  (assert-true test
+    (match (Parser.parse
+             (Parser.many-till (Parser.byte \a) (Parser.byte \b))
+             "aaab")
+      (Result.Success arr) (= 3 (Array.length &arr))
+      _ false)
+    "many-till collects p results until end succeeds")
+
+  (assert-true test
+    (match (Parser.parse
+             (Parser.many-till (Parser.byte \a) (Parser.byte \b))
+             "b")
+      (Result.Success arr) (= 0 (Array.length &arr))
+      _ false)
+    "many-till: empty collection when end matches immediately")
+
+  (assert-true test
+    (match (Parser.parse
+             (Parser.many-till (Parser.any-byte) (Parser.string @"end"))
+             "xyend")
+      (Result.Success arr) (= 2 (Array.length &arr))
+      _ false)
+    "many-till: collects items before multi-byte terminator")
 
   ; ----------------------------------------
   ; between
@@ -878,4 +957,178 @@
         (String.contains-string? &(Parser.format-error &e) "unexpected")
       _ false)
     "eof: error message includes unexpected token when input remains")
+
+  ; ----------------------------------------
+  ; chainl1
+  ; ----------------------------------------
+
+  (assert-equal test 6
+    (match (Parser.parse
+             (Parser.chainl1
+               (Parser.Lexer.integer)
+               (Parser.map (Parser.Lexer.symbol @"+") (fn [_] Int.+)))
+             "1+2+3")
+      (Result.Success n) n
+      _ -1)
+    "chainl1: 1+2+3 = 6")
+
+  (assert-equal test 42
+    (match (Parser.parse
+             (Parser.chainl1
+               (Parser.Lexer.integer)
+               (Parser.map (Parser.Lexer.symbol @"+") (fn [_] Int.+)))
+             "42")
+      (Result.Success n) n
+      _ -1)
+    "chainl1: single value (no ops)")
+
+  (assert-equal test -4
+    (match (Parser.parse
+             (Parser.chainl1
+               (Parser.Lexer.integer)
+               (Parser.map (Parser.Lexer.symbol @"-") (fn [_] Int.-)))
+             "1-2-3")
+      (Result.Success n) n
+      _ 0)
+    "chainl1: left-associative 1-2-3 = ((1-2)-3) = -4")
+
+  (assert-true test
+    (err? &(Parser.parse
+             (Parser.chainl1
+               (Parser.Lexer.integer)
+               (Parser.map (Parser.Lexer.symbol @"+") (fn [_] Int.+)))
+             ""))
+    "chainl1: fails on empty input")
+
+  ; ----------------------------------------
+  ; chainr1
+  ; ----------------------------------------
+
+  (assert-equal test 512
+    (match (Parser.parse
+             (Parser.chainr1
+               (Parser.Lexer.integer)
+               (Parser.map (Parser.Lexer.symbol @"^") (fn [_] ipow)))
+             "2^3^2")
+      (Result.Success n) n
+      _ -1)
+    "chainr1: right-associative 2^3^2 = 2^(3^2) = 512")
+
+  (assert-equal test 5
+    (match (Parser.parse
+             (Parser.chainr1
+               (Parser.Lexer.integer)
+               (Parser.map (Parser.Lexer.symbol @"^") (fn [_] ipow)))
+             "5")
+      (Result.Success n) n
+      _ -1)
+    "chainr1: single value (no ops)")
+
+  (assert-true test
+    (err? &(Parser.parse
+             (Parser.chainr1
+               (Parser.Lexer.integer)
+               (Parser.map (Parser.Lexer.symbol @"^") (fn [_] ipow)))
+             ""))
+    "chainr1: fails on empty input")
+
+  ; ----------------------------------------
+  ; chainl
+  ; ----------------------------------------
+
+  (assert-equal test 0
+    (match (Parser.parse
+             (Parser.chainl
+               (Parser.Lexer.integer)
+               (Parser.map (Parser.Lexer.symbol @"+") (fn [_] Int.+))
+               0)
+             "")
+      (Result.Success n) n
+      _ -1)
+    "chainl: returns default on empty input")
+
+  (assert-equal test 10
+    (match (Parser.parse
+             (Parser.chainl
+               (Parser.Lexer.integer)
+               (Parser.map (Parser.Lexer.symbol @"+") (fn [_] Int.+))
+               0)
+             "3+7")
+      (Result.Success n) n
+      _ -1)
+    "chainl: works like chainl1 when input matches")
+
+  ; ----------------------------------------
+  ; chainr
+  ; ----------------------------------------
+
+  (assert-equal test 1
+    (match (Parser.parse
+             (Parser.chainr
+               (Parser.Lexer.integer)
+               (Parser.map (Parser.Lexer.symbol @"^") (fn [_] ipow))
+               1)
+             "")
+      (Result.Success n) n
+      _ -1)
+    "chainr: returns default on empty input")
+
+  (assert-equal test 512
+    (match (Parser.parse
+             (Parser.chainr
+               (Parser.Lexer.integer)
+               (Parser.map (Parser.Lexer.symbol @"^") (fn [_] ipow))
+               1)
+             "2^3^2")
+      (Result.Success n) n
+      _ -1)
+    "chainr: works like chainr1 when input matches")
+
+  ; ----------------------------------------
+  ; Lexer.float
+  ; ----------------------------------------
+
+  (assert-equal test 123.456
+    (match (Parser.parse (Parser.Lexer.float) "123.456")
+      (Result.Success d) d
+      _ 0.0)
+    "float: basic decimal")
+
+  (assert-equal test -1.5
+    (match (Parser.parse (Parser.Lexer.float) "-1.5")
+      (Result.Success d) d
+      _ 0.0)
+    "float: negative")
+
+  (assert-equal test 10000000000.0
+    (match (Parser.parse (Parser.Lexer.float) "1e10")
+      (Result.Success d) d
+      _ 0.0)
+    "float: exponent without decimal")
+
+  (assert-equal test 0.0015
+    (match (Parser.parse (Parser.Lexer.float) "1.5e-3")
+      (Result.Success d) d
+      _ 0.0)
+    "float: negative exponent")
+
+  (assert-equal test 1500.0
+    (match (Parser.parse (Parser.Lexer.float) "1.5e+3")
+      (Result.Success d) d
+      _ 0.0)
+    "float: positive exponent with sign")
+
+  (assert-equal test 42.0
+    (match (Parser.parse (Parser.Lexer.float) "42")
+      (Result.Success d) d
+      _ 0.0)
+    "float: integer-like input (no decimal point)")
+
+  (assert-true test
+    (err? &(Parser.parse (the (Parser Double) (Parser.Lexer.float)) ""))
+    "float: fails on empty input")
+
+  (assert-true test
+    (err? &(Parser.parse (the (Parser Double) (Parser.Lexer.float)) "abc"))
+    "float: fails on non-numeric input")
 )
