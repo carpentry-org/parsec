@@ -760,6 +760,98 @@ is not allowed (`sep` must be followed by another `p`). Returns an
           (Reply.OkConsumed v1 c1) (sep-by1-loop &p &sep src len c1 [v1] true)
           (Reply.OkEmpty v1 c1) (sep-by1-loop &p &sep src len c1 [v1] false)))))
 
+  (private end-by-loop)
+  (hidden end-by-loop)
+  (defn end-by-loop [p sep src len start-cur acc start-consumed]
+    (let-do [c start-cur
+             values acc
+             err (the (Maybe ParseErr) (Maybe.Nothing))
+             consumed-any start-consumed
+             going true]
+      (while-do going
+        (match (~(Parser.run p) src len &c)
+          (Reply.ErrEmpty _) (set! going false)
+          (Reply.ErrConsumed e2)
+            (do
+              (set! err (Maybe.Just e2))
+              (set! consumed-any true)
+              (set! going false))
+          (Reply.OkConsumed v c-after-p)
+            (do
+              (set! consumed-any true)
+              (match (~(Parser.run sep) src len &c-after-p)
+                (Reply.OkConsumed _ c3)
+                  (do (set! values (Array.push-back values v)) (set! c c3))
+                (Reply.OkEmpty _ c3)
+                  (do (set! values (Array.push-back values v)) (set! c c3))
+                (Reply.ErrEmpty e2)
+                  (do (set! err (Maybe.Just e2)) (set! going false))
+                (Reply.ErrConsumed e2)
+                  (do (set! err (Maybe.Just e2)) (set! going false))))
+          (Reply.OkEmpty v c-after-p)
+            (match (~(Parser.run sep) src len &c-after-p)
+              (Reply.OkConsumed _ c3)
+                (do
+                  (set! values (Array.push-back values v))
+                  (set! c c3)
+                  (set! consumed-any true))
+              (Reply.OkEmpty _ _) (set! going false)
+              (Reply.ErrEmpty e2)
+                (do (set! err (Maybe.Just e2)) (set! going false))
+              (Reply.ErrConsumed e2)
+                (do
+                  (set! err (Maybe.Just e2))
+                  (set! consumed-any true)
+                  (set! going false)))))
+      (match err
+        (Maybe.Just e)
+          (if consumed-any (Reply.ErrConsumed e) (Reply.ErrEmpty e))
+        (Maybe.Nothing)
+          (if consumed-any (Reply.OkConsumed values c) (Reply.OkEmpty values c)))))
+
+  (doc end-by1 "one or more `p` each followed by `sep`. Unlike
+`sep-by1`, the separator acts as a **terminator** — the last `p` must
+also be followed by `sep`. Returns an `Array` of `p` values.")
+  (defn end-by1 [p sep]
+    (Parser.init
+      (fn [src len cur]
+        (match (~(Parser.run &p) src len cur)
+          (Reply.ErrEmpty e) (Reply.ErrEmpty e)
+          (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+          (Reply.OkConsumed v1 c1)
+            (match (~(Parser.run &sep) src len &c1)
+              (Reply.OkConsumed _ c2) (end-by-loop &p &sep src len c2 [v1] true)
+              (Reply.OkEmpty _ c2) (end-by-loop &p &sep src len c2 [v1] true)
+              (Reply.ErrEmpty e) (Reply.ErrConsumed e)
+              (Reply.ErrConsumed e) (Reply.ErrConsumed e))
+          (Reply.OkEmpty v1 c1)
+            (match (~(Parser.run &sep) src len &c1)
+              (Reply.OkConsumed _ c2) (end-by-loop &p &sep src len c2 [v1] true)
+              (Reply.OkEmpty _ c2) (end-by-loop &p &sep src len c2 [v1] false)
+              (Reply.ErrEmpty e) (Reply.ErrEmpty e)
+              (Reply.ErrConsumed e) (Reply.ErrConsumed e))))))
+
+  (doc end-by "zero or more `p` each followed by `sep`. Returns an
+`Array` (possibly empty). Each element must be terminated by `sep`.")
+  (defn end-by [p sep]
+    (Parser.init
+      (fn [src len cur]
+        (match (~(Parser.run &p) src len cur)
+          (Reply.ErrEmpty _) (Reply.OkEmpty [] @cur)
+          (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+          (Reply.OkConsumed v1 c1)
+            (match (~(Parser.run &sep) src len &c1)
+              (Reply.OkConsumed _ c2) (end-by-loop &p &sep src len c2 [v1] true)
+              (Reply.OkEmpty _ c2) (end-by-loop &p &sep src len c2 [v1] true)
+              (Reply.ErrEmpty e) (Reply.ErrConsumed e)
+              (Reply.ErrConsumed e) (Reply.ErrConsumed e))
+          (Reply.OkEmpty v1 c1)
+            (match (~(Parser.run &sep) src len &c1)
+              (Reply.OkConsumed _ c2) (end-by-loop &p &sep src len c2 [v1] true)
+              (Reply.OkEmpty _ c2) (end-by-loop &p &sep src len c2 [v1] false)
+              (Reply.ErrEmpty e) (Reply.ErrEmpty e)
+              (Reply.ErrConsumed e) (Reply.ErrConsumed e))))))
+
   (doc choice "tries each parser in turn; returns the first
 success. If all parsers fail empty, the resulting failure merges
 their expected sets. A consumed failure of any parser short-circuits

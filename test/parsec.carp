@@ -469,6 +469,60 @@
     "sep-by allows empty")
 
   ; ----------------------------------------
+  ; end-by / end-by1
+  ; ----------------------------------------
+
+  (assert-true test
+    (match (Parser.parse
+             (Parser.end-by1 (Parser.byte \a) (Parser.byte \;))
+             "a;a;a;")
+      (Result.Success arr) (= 3 (Array.length &arr))
+      _ false)
+    "end-by1: 3 terminated elements")
+
+  (assert-true test
+    (match (Parser.parse
+             (Parser.end-by1 (Parser.byte \a) (Parser.byte \;))
+             "a;")
+      (Result.Success arr) (= 1 (Array.length &arr))
+      _ false)
+    "end-by1: single terminated element")
+
+  (assert-true test
+    (err? &(Parser.parse
+             (Parser.end-by1 (Parser.byte \a) (Parser.byte \;))
+             ""))
+    "end-by1 fails on empty input")
+
+  (assert-true test
+    (err? &(Parser.parse
+             (Parser.end-by1 (Parser.byte \a) (Parser.byte \;))
+             "a"))
+    "end-by1 fails when terminator is missing")
+
+  (assert-true test
+    (match (Parser.parse
+             (Parser.end-by (Parser.byte \a) (Parser.byte \;))
+             "")
+      (Result.Success arr) (= 0 (Array.length &arr))
+      _ false)
+    "end-by allows empty")
+
+  (assert-true test
+    (match (Parser.parse
+             (Parser.end-by (Parser.byte \a) (Parser.byte \;))
+             "a;a;")
+      (Result.Success arr) (= 2 (Array.length &arr))
+      _ false)
+    "end-by: 2 terminated elements")
+
+  (assert-true test
+    (err? &(Parser.parse
+             (Parser.end-by (Parser.byte \a) (Parser.byte \;))
+             "a"))
+    "end-by fails when terminator is missing after consumed element")
+
+  ; ----------------------------------------
   ; choice
   ; ----------------------------------------
 
