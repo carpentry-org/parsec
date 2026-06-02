@@ -78,7 +78,7 @@
                 <div class="module-description">
                     <p>is a Parsec-style parser combinator library for Carp.</p>
 <h2>Installation</h2>
-<pre><code>(load &quot;git@github.com:carpentry-org/parsec@0.2.0&quot;)
+<pre><code>(load &quot;git@github.com:carpentry-org/parsec@0.3.0&quot;)
 </code></pre>
 <h2>Usage</h2>
 <pre><code>(let [p (Parser.seq (Parser.byte \h) (Parser.byte \i))]
@@ -289,6 +289,94 @@ the input doesn't match or is at EOF.</p>
                     </p>
                 </div>
                 <div class="binder">
+                    <a class="anchor" href="#chainl">
+                        <h3 id="chainl">
+                            chainl
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Parser a), (Parser (Fn [a, a] a)), a] (Parser a))
+                    </p>
+                    <pre class="args">
+                        (chainl p op default)
+                    </pre>
+                    <p class="doc">
+                        <p>like <code>chainl1</code> but returns <code>default</code> if <code>p</code> fails on
+the first attempt.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#chainl1">
+                        <h3 id="chainl1">
+                            chainl1
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Parser a), (Parser (Fn [a, a] a))] (Parser a))
+                    </p>
+                    <pre class="args">
+                        (chainl1 p op)
+                    </pre>
+                    <p class="doc">
+                        <p>parses one or more occurrences of <code>p</code> separated by
+<code>op</code>. <code>op</code> returns a binary function used to combine values
+left-associatively. Example: <code>(chainl1 (Lexer.integer) add-op)</code>
+parses <code>1+2+3</code> as <code>((1+2)+3)</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#chainr">
+                        <h3 id="chainr">
+                            chainr
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Parser a), (Parser (Fn [a, a] a)), a] (Parser a))
+                    </p>
+                    <pre class="args">
+                        (chainr p op default)
+                    </pre>
+                    <p class="doc">
+                        <p>like <code>chainr1</code> but returns <code>default</code> if <code>p</code> fails on
+the first attempt.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#chainr1">
+                        <h3 id="chainr1">
+                            chainr1
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Parser a), (Parser (Fn [a, a] a))] (Parser a))
+                    </p>
+                    <pre class="args">
+                        (chainr1 p op)
+                    </pre>
+                    <p class="doc">
+                        <p>parses one or more occurrences of <code>p</code> separated by
+<code>op</code>. <code>op</code> returns a binary function used to combine values
+right-associatively. Example: with exponentiation as <code>op</code>,
+<code>2^3^2</code> parses as <code>2^(3^2) = 512</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
                     <a class="anchor" href="#choice">
                         <h3 id="choice">
                             choice
@@ -374,6 +462,49 @@ consumption.</p>
                     </p>
                 </div>
                 <div class="binder">
+                    <a class="anchor" href="#end-by">
+                        <h3 id="end-by">
+                            end-by
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Parser a), (Parser b)] (Parser (Array a)))
+                    </p>
+                    <pre class="args">
+                        (end-by p sep)
+                    </pre>
+                    <p class="doc">
+                        <p>zero or more <code>p</code> each followed by <code>sep</code>. Returns an
+<code>Array</code> (possibly empty). Each element must be terminated by <code>sep</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#end-by1">
+                        <h3 id="end-by1">
+                            end-by1
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Parser a), (Parser b)] (Parser (Array a)))
+                    </p>
+                    <pre class="args">
+                        (end-by1 p sep)
+                    </pre>
+                    <p class="doc">
+                        <p>one or more <code>p</code> each followed by <code>sep</code>. Unlike
+<code>sep-by1</code>, the separator acts as a <strong>terminator</strong> — the last <code>p</code> must
+also be followed by <code>sep</code>. Returns an <code>Array</code> of <code>p</code> values.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
                     <a class="anchor" href="#eof">
                         <h3 id="eof">
                             eof
@@ -389,7 +520,9 @@ consumption.</p>
                         (eof)
                     </pre>
                     <p class="doc">
-                        <p>succeeds without consuming iff the cursor is at end of input.</p>
+                        <p>succeeds without consuming iff the cursor is at end of input.
+When the input is not at end, the error's <code>unexpected</code> field is
+populated with the byte that was seen.</p>
 
                     </p>
                 </div>
@@ -553,6 +686,29 @@ empty-success parser).</p>
                     </p>
                 </div>
                 <div class="binder">
+                    <a class="anchor" href="#many-till">
+                        <h3 id="many-till">
+                            many-till
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Parser a), (Parser b)] (Parser (Array a)))
+                    </p>
+                    <pre class="args">
+                        (many-till p end)
+                    </pre>
+                    <p class="doc">
+                        <p>runs <code>p</code> repeatedly until <code>end</code> succeeds, collecting
+<code>p</code> results in an <code>Array</code>. Returns the array (not the <code>end</code> result).
+The <code>end</code> parser is tried before each <code>p</code>. If <code>end</code> can consume on
+failure, wrap it in <code>try</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
                     <a class="anchor" href="#many1">
                         <h3 id="many1">
                             many1
@@ -655,6 +811,29 @@ failures propagate.</p>
                     <p class="doc">
                         <p>runs <code>p</code> over the entire input. Strict: fails if <code>p</code>
 doesn't consume all of <code>src</code>. Returns <code>(Result a ParseErr)</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#parse-partial">
+                        <h3 id="parse-partial">
+                            parse-partial
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Parser a), (Ref String b)] (Result (Pair a String) ParseErr))
+                    </p>
+                    <pre class="args">
+                        (parse-partial p src)
+                    </pre>
+                    <p class="doc">
+                        <p>runs <code>p</code> on the input without requiring it to
+consume everything. On success, returns a <code>Pair</code> of the parsed value
+and the remaining unconsumed input as a <code>String</code>. On error, returns
+the <code>ParseErr</code>.</p>
 
                     </p>
                 </div>
@@ -790,7 +969,9 @@ once at startup, and reference it from sub-parsers via <code>recurse</code>.</p>
                         (satisfy pred lbl)
                     </pre>
                     <p class="doc">
-                        <p>consumes one byte if <code>pred</code> holds, otherwise fails empty.</p>
+                        <p>consumes one byte if <code>pred</code> holds, otherwise fails empty.
+When the predicate rejects a byte, the error's <code>unexpected</code> field is
+populated with the byte that was seen.</p>
 
                     </p>
                 </div>
@@ -895,6 +1076,49 @@ Failure of either propagates with appropriate consumption tracking.</p>
                     </span>
                     <p class="doc">
                         <p>sets the <code>run</code> property of a <code>Parser</code> in place.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#skip-many">
+                        <h3 id="skip-many">
+                            skip-many
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Parser a)] (Parser ()))
+                    </p>
+                    <pre class="args">
+                        (skip-many p)
+                    </pre>
+                    <p class="doc">
+                        <p>runs <code>p</code> zero or more times, discarding all
+results. Returns <code>()</code>. Avoids building an <code>Array</code>, saving
+allocations compared to <code>many</code>. Stops on empty failure of <code>p</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#skip-many1">
+                        <h3 id="skip-many1">
+                            skip-many1
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Parser a)] (Parser ()))
+                    </p>
+                    <pre class="args">
+                        (skip-many1 p)
+                    </pre>
+                    <p class="doc">
+                        <p>runs <code>p</code> one or more times, discarding all
+results. Returns <code>()</code>. Fails if the first application of <code>p</code> fails.</p>
 
                     </p>
                 </div>

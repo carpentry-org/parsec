@@ -81,6 +81,30 @@ handling, integers, identifiers, and literal symbols.</p>
 
                 </div>
                 <div class="binder">
+                    <a class="anchor" href="#float">
+                        <h3 id="float">
+                            float
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [] (Parser Double))
+                    </p>
+                    <pre class="args">
+                        (float)
+                    </pre>
+                    <p class="doc">
+                        <p>parses a floating-point number and returns a <code>Double</code>.
+Handles optional leading <code>-</code>, integer part, decimal point with
+fractional digits, and optional exponent (<code>e</code>/<code>E</code> with optional
+sign). At least one digit must appear in the integer or fractional
+part. Uses <code>slice-of</code> and <code>Double.from-string</code> for conversion.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
                     <a class="anchor" href="#identifier">
                         <h3 id="identifier">
                             identifier
