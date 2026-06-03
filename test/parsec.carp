@@ -668,6 +668,27 @@
       _ 0)
     "integer parses positive without sign")
 
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.unsigned-int)
+                         "99999999999999999999999"))
+    "unsigned-int rejects overflow")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.integer)
+                         "99999999999999999999999"))
+    "integer rejects positive overflow")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.integer)
+                         "-99999999999999999999999"))
+    "integer rejects negative overflow")
+
+  (assert-equal test 42
+    (match (Parser.parse (Parser.Lexer.unsigned-int) "042")
+      (Result.Success n) n
+      _ -1)
+    "unsigned-int accepts leading zeros")
+
   (assert-equal test "foo_bar2"
     &(match (Parser.parse (Parser.Lexer.identifier) "foo_bar2")
        (Result.Success s) s

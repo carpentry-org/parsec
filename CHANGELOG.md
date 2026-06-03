@@ -30,6 +30,9 @@ the project follows [Semantic Versioning](https://semver.org/).
   a `Double`.
 
 ### Fixed
+- `Lexer.unsigned-int` and `Lexer.integer` now return a parse
+  error when the digit string overflows `Int` instead of silently
+  yielding a clamped value (e.g. `INT_MAX`).
 - `Parser.satisfy` now populates `ParseErr.unexpected` with the
   actual byte seen when the predicate fails, so error messages
   report "unexpected 'x'; expected digit" instead of only the
