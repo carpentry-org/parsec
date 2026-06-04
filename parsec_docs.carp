@@ -305,7 +305,7 @@ tag it.
 ## `Parser.parse` is strict
 
 `Parser.parse p input` succeeds only if `p` consumes all of `input`.
-There is no partial-parse entry point. If you want to ignore trailing
-input, append a permissive `take-while` to your grammar, or trim the
-input before parsing.")
+If you want to allow unconsumed trailing input, use
+`Parser.parse-partial` instead — it returns a `Pair` of the parsed
+value and the remaining input as a `String`.")
 (defmodule Pitfalls)

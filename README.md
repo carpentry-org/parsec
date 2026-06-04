@@ -23,7 +23,7 @@ A Parsec-style parser combinator library for Carp.
 
 For a step-by-step walk-through building an arithmetic expression
 parser from scratch, see [the tutorial](https://carpentry.dev/parsec/Tutorial.html).
-For caveats and idioms, see [pitfalls](https://carpentry.dev/parsev/Pitfalls.html).
+For caveats and idioms, see [pitfalls](https://carpentry.dev/parsec/Pitfalls.html).
 The full API reference is generated from the source and lives at
 [the carpentry](https://carpentry.dev/parsec).
 

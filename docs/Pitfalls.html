@@ -123,9 +123,9 @@ a compile error.</p>
 tag it.</p>
 <h2><code>Parser.parse</code> is strict</h2>
 <p><code>Parser.parse p input</code> succeeds only if <code>p</code> consumes all of <code>input</code>.
-There is no partial-parse entry point. If you want to ignore trailing
-input, append a permissive <code>take-while</code> to your grammar, or trim the
-input before parsing.</p>
+If you want to allow unconsumed trailing input, use
+<code>Parser.parse-partial</code> instead — it returns a <code>Pair</code> of the parsed
+value and the remaining input as a <code>String</code>.</p>
 
                 </div>
             </div>
