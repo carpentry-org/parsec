@@ -978,6 +978,76 @@
     "count 0 succeeds with empty array on empty input")
 
   ; ----------------------------------------
+  ; at-most
+  ; ----------------------------------------
+
+  (assert-true test
+    (match (Parser.parse (Parser.at-most 3 (Parser.byte \a)) "aaa")
+      (Result.Success arr) (= 3 (Array.length &arr))
+      _ false)
+    "at-most 3 returns 3 elements on exact match")
+
+  (assert-true test
+    (match (Parser.parse (Parser.at-most 3 (Parser.byte \a)) "aa")
+      (Result.Success arr) (= 2 (Array.length &arr))
+      _ false)
+    "at-most 3 returns 2 elements when only 2 available")
+
+  (assert-true test
+    (match (Parser.parse (Parser.at-most 3 (Parser.byte \a)) "")
+      (Result.Success arr) (= 0 (Array.length &arr))
+      _ false)
+    "at-most on empty input yields empty array")
+
+  (assert-true test
+    (match (Parser.parse (Parser.at-most 0 (Parser.byte \a)) "")
+      (Result.Success arr) (= 0 (Array.length &arr))
+      _ false)
+    "at-most 0 succeeds with empty array")
+
+  (assert-true test
+    (ok? &(Parser.parse
+            (Parser.seq (Parser.at-most 2 (Parser.byte \a)) (Parser.byte \b))
+            "aab"))
+    "at-most stops at limit leaving remaining input for next parser")
+
+  ; ----------------------------------------
+  ; at-least
+  ; ----------------------------------------
+
+  (assert-true test
+    (match (Parser.parse (Parser.at-least 2 (Parser.byte \a)) "aaa")
+      (Result.Success arr) (= 3 (Array.length &arr))
+      _ false)
+    "at-least 2 greedily consumes 3 on \"aaa\"")
+
+  (assert-true test
+    (match (Parser.parse (Parser.at-least 2 (Parser.byte \a)) "aa")
+      (Result.Success arr) (= 2 (Array.length &arr))
+      _ false)
+    "at-least 2 succeeds with exactly 2")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.at-least 2 (Parser.byte \a)) "a"))
+    "at-least 2 fails on only 1 match")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.at-least 3 (Parser.byte \a)) ""))
+    "at-least 3 fails on empty input")
+
+  (assert-true test
+    (match (Parser.parse (Parser.at-least 0 (Parser.byte \a)) "")
+      (Result.Success arr) (= 0 (Array.length &arr))
+      _ false)
+    "at-least 0 on empty input yields empty array (like many)")
+
+  (assert-true test
+    (match (Parser.parse (Parser.at-least 0 (Parser.byte \a)) "aaa")
+      (Result.Success arr) (= 3 (Array.length &arr))
+      _ false)
+    "at-least 0 greedily consumes all (like many)")
+
+  ; ----------------------------------------
   ; take 0 (edge case)
   ; ----------------------------------------
 

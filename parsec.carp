@@ -515,6 +515,80 @@ consumption.")
             (Maybe.Nothing)
               (if consumed-any (Reply.OkConsumed acc c) (Reply.OkEmpty acc c)))))))
 
+  (doc at-most "runs `p` up to `n` times, collecting results into an
+`Array`. Stops early if `p` fails empty or succeeds without consuming
+(same guard as `many`). Consumed failures propagate. Use `count` for
+exactly `n` repetitions that may succeed empty.")
+  (defn at-most [n p]
+    (Parser.init
+      (fn [src len cur]
+        (let-do [acc []
+                 c @cur
+                 err (the (Maybe ParseErr) (Maybe.Nothing))
+                 consumed-any false
+                 i 0
+                 going true]
+          (while-do (and going (Int.< i n))
+            (match (~(Parser.run &p) src len &c)
+              (Reply.OkConsumed v c2)
+                (do
+                  (set! acc (Array.push-back acc v))
+                  (set! c c2)
+                  (set! consumed-any true))
+              (Reply.OkEmpty _ _) (set! going false)
+              (Reply.ErrEmpty _) (set! going false)
+              (Reply.ErrConsumed e)
+                (do (set! err (Maybe.Just e)) (set! going false)))
+            (set! i (Int.inc i)))
+          (match err
+            (Maybe.Just e) (Reply.ErrConsumed e)
+            (Maybe.Nothing)
+              (if consumed-any (Reply.OkConsumed acc c) (Reply.OkEmpty acc c)))))))
+
+  (doc at-least "runs `p` at least `n` times, then continues greedily
+like `many`. Fails if `p` doesn't match at least `n` times. After the
+minimum, stops on empty failure or empty success to avoid infinite
+recursion.")
+  (defn at-least [n p]
+    (Parser.init
+      (fn [src len cur]
+        (let-do [acc []
+                 c @cur
+                 err (the (Maybe ParseErr) (Maybe.Nothing))
+                 consumed-any false
+                 i 0
+                 going true]
+          (while-do (and going (Int.< i n))
+            (match (~(Parser.run &p) src len &c)
+              (Reply.OkConsumed v c2)
+                (do
+                  (set! acc (Array.push-back acc v))
+                  (set! c c2)
+                  (set! consumed-any true))
+              (Reply.OkEmpty v c2)
+                (do (set! acc (Array.push-back acc v)) (set! c c2))
+              (Reply.ErrEmpty e)
+                (do (set! err (Maybe.Just e)) (set! going false))
+              (Reply.ErrConsumed e)
+                (do (set! err (Maybe.Just e)) (set! going false)))
+            (set! i (Int.inc i)))
+          (while-do going
+            (match (~(Parser.run &p) src len &c)
+              (Reply.OkConsumed v c2)
+                (do
+                  (set! acc (Array.push-back acc v))
+                  (set! c c2)
+                  (set! consumed-any true))
+              (Reply.OkEmpty _ _) (set! going false)
+              (Reply.ErrEmpty _) (set! going false)
+              (Reply.ErrConsumed e2)
+                (do (set! err (Maybe.Just e2)) (set! going false))))
+          (match err
+            (Maybe.Just e)
+              (if consumed-any (Reply.ErrConsumed e) (Reply.ErrEmpty e))
+            (Maybe.Nothing)
+              (if consumed-any (Reply.OkConsumed acc c) (Reply.OkEmpty acc c)))))))
+
   (doc many "runs `p` zero or more times, collecting results. Stops
 on empty failure of `p`. If `p` succeeds without consuming, the loop
 stops to avoid infinite recursion (do not use `many` with an
