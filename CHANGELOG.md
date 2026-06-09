@@ -6,6 +6,10 @@ the project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `Parser.at-most n p` — runs `p` up to `n` times, collecting
+  results. Stops early on empty failure (like `many` with a cap).
+- `Parser.at-least n p` — runs `p` at least `n` times, then
+  continues greedily. Fails if `p` doesn't match `n` times.
 - `Parser.skip-many p` — like `many` but discards all results,
   returning `()`. Avoids building an `Array`, saving allocations.
 - `Parser.skip-many1 p` — like `many1` but discards results.
