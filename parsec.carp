@@ -459,6 +459,30 @@ failures propagate.")
           (Reply.ErrConsumed e) (Reply.ErrConsumed e)
           (Reply.ErrEmpty e) (Reply.OkEmpty (Maybe.Nothing) @cur)))))
 
+  (doc option "tries `p`; on empty failure, returns `default` without
+consuming. On consumed failure, propagates. On success, returns
+`p`'s value. Like `optional` but yields a concrete default instead
+of `Maybe`.")
+  (defn option [default p]
+    (Parser.init
+      (fn [src len cur]
+        (match (~(Parser.run &p) src len cur)
+          (Reply.OkConsumed v c) (Reply.OkConsumed v c)
+          (Reply.OkEmpty v c) (Reply.OkEmpty v c)
+          (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+          (Reply.ErrEmpty _) (Reply.OkEmpty @&default @cur)))))
+
+  (doc skip "runs `p` and discards its value, returning `()`.
+Useful for running a parser purely for its consumption effect.")
+  (defn skip [p]
+    (Parser.init
+      (fn [src len cur]
+        (match (~(Parser.run &p) src len cur)
+          (Reply.OkConsumed _ c) (Reply.OkConsumed () c)
+          (Reply.OkEmpty _ c) (Reply.OkEmpty () c)
+          (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+          (Reply.ErrEmpty e) (Reply.ErrEmpty e)))))
+
   (doc lookahead "runs `p`, then restores the cursor. `p`'s value
 is kept, but no input is consumed. `p`'s failures propagate as-is.")
   (defn lookahead [p]
@@ -833,6 +857,66 @@ is not allowed (`sep` must be followed by another `p`). Returns an
           (Reply.ErrConsumed e) (Reply.ErrConsumed e)
           (Reply.OkConsumed v1 c1) (sep-by1-loop &p &sep src len c1 [v1] true)
           (Reply.OkEmpty v1 c1) (sep-by1-loop &p &sep src len c1 [v1] false)))))
+
+  (private sep-end-by1-loop)
+  (hidden sep-end-by1-loop)
+  (defn sep-end-by1-loop [p sep src len start-cur acc start-consumed]
+    (let-do [c start-cur
+             values acc
+             err (the (Maybe ParseErr) (Maybe.Nothing))
+             consumed-any start-consumed
+             going true]
+      (while-do going
+        (match (~(Parser.run sep) src len &c)
+          (Reply.ErrEmpty _) (set! going false)
+          (Reply.OkEmpty _ _) (set! going false)
+          (Reply.ErrConsumed e2)
+            (do
+              (set! err (Maybe.Just e2))
+              (set! consumed-any true)
+              (set! going false))
+          (Reply.OkConsumed _ c-after-sep)
+            (do
+              (set! consumed-any true)
+              (match (~(Parser.run p) src len &c-after-sep)
+                (Reply.OkConsumed v c2)
+                  (do (set! values (Array.push-back values v)) (set! c c2))
+                (Reply.OkEmpty v c2)
+                  (do (set! values (Array.push-back values v)) (set! c c2))
+                (Reply.ErrEmpty _) (do (set! c c-after-sep) (set! going false))
+                (Reply.ErrConsumed e2)
+                  (do (set! err (Maybe.Just e2)) (set! going false))))))
+      (match err
+        (Maybe.Just e)
+          (if consumed-any (Reply.ErrConsumed e) (Reply.ErrEmpty e))
+        (Maybe.Nothing)
+          (if consumed-any (Reply.OkConsumed values c) (Reply.OkEmpty values c)))))
+
+  (doc sep-end-by1 "one or more `p` separated by `sep`, with an
+optional trailing `sep`. Returns an `Array` of `p` values. Like
+`sep-by1` but allows the final element to be followed by `sep`.")
+  (defn sep-end-by1 [p sep]
+    (Parser.init
+      (fn [src len cur]
+        (match (~(Parser.run &p) src len cur)
+          (Reply.ErrEmpty e) (Reply.ErrEmpty e)
+          (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+          (Reply.OkConsumed v1 c1)
+            (sep-end-by1-loop &p &sep src len c1 [v1] true)
+          (Reply.OkEmpty v1 c1) (sep-end-by1-loop &p &sep src len c1 [v1] false)))))
+
+  (doc sep-end-by "zero or more `p` separated by `sep`, with an
+optional trailing `sep`. Returns an `Array` (possibly empty). Like
+`sep-by` but allows the final element to be followed by `sep`.")
+  (defn sep-end-by [p sep]
+    (Parser.init
+      (fn [src len cur]
+        (match (~(Parser.run &p) src len cur)
+          (Reply.ErrEmpty _) (Reply.OkEmpty [] @cur)
+          (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+          (Reply.OkConsumed v1 c1)
+            (sep-end-by1-loop &p &sep src len c1 [v1] true)
+          (Reply.OkEmpty v1 c1) (sep-end-by1-loop &p &sep src len c1 [v1] false)))))
 
   (private end-by-loop)
   (hidden end-by-loop)
@@ -1709,3 +1793,34 @@ before the comment closes. Returns unit.")
                           (Reply.ErrConsumed
                             (ParseErr.expected-at &c @"end of block comment"))
                           (Reply.OkConsumed () c))))))))))))))
+
+(defmodule Parser
+  (defmodule Lexer
+    (doc digit "matches one ASCII digit (`0`-`9`). Returns the byte.")
+    (defn digit [] (Parser.satisfy (fn [c] (digit? c)) @"digit"))
+
+    (doc letter "matches one ASCII letter (`a`-`z`, `A`-`Z`). Returns
+the byte.")
+    (defn letter [] (Parser.satisfy (fn [c] (alpha? c)) @"letter"))
+
+    (doc upper "matches one ASCII uppercase letter (`A`-`Z`). Returns
+the byte.")
+    (defn upper []
+      (Parser.satisfy
+        (fn [c] (and (Char.>= c \A) (Char.<= c \Z)))
+        @"uppercase letter"))
+
+    (doc lower "matches one ASCII lowercase letter (`a`-`z`). Returns
+the byte.")
+    (defn lower []
+      (Parser.satisfy
+        (fn [c] (and (Char.>= c \a) (Char.<= c \z)))
+        @"lowercase letter"))
+
+    (doc alpha-num "matches one ASCII letter or digit. Returns the
+byte.")
+    (defn alpha-num [] (Parser.satisfy (fn [c] (alnum? c)) @"letter or digit"))
+
+    (doc space "matches one ASCII whitespace byte (space, tab, CR,
+LF). Returns the byte.")
+    (defn space [] (Parser.satisfy (fn [c] (space? c)) @"space"))))

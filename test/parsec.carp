@@ -1458,4 +1458,251 @@
       (Result.Success p) (= "rest" (Pair.b &p))
       _ false)
     "block-comment: leaves unconsumed input after close delimiter")
+
+  ; ----------------------------------------
+  ; option
+  ; ----------------------------------------
+
+  (assert-equal test \a
+    (match (Parser.parse (Parser.option \z (Parser.byte \a)) "a")
+      (Result.Success v) v
+      (Result.Error _)   \x)
+    "option: returns p's value on success")
+
+  (assert-equal test \z
+    (match (Parser.parse (Parser.option \z (Parser.byte \a)) "")
+      (Result.Success v) v
+      (Result.Error _)   \x)
+    "option: returns default on empty failure")
+
+  (assert-true test
+    (err? &(Parser.parse
+             (Parser.option \z
+               (Parser.then (Parser.byte \a) (Parser.byte \b)))
+             "ax"))
+    "option: consumed failure propagates")
+
+  ; ----------------------------------------
+  ; skip
+  ; ----------------------------------------
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.skip (Parser.byte \a)) "a"))
+    "skip: succeeds when inner parser succeeds")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.skip (Parser.byte \a)) "b"))
+    "skip: fails when inner parser fails")
+
+  (assert-true test
+    (ok? &(Parser.parse
+            (Parser.seq (Parser.skip (Parser.byte \a)) (Parser.byte \b))
+            "ab"))
+    "skip: consumes input, next parser sees remaining")
+
+  ; ----------------------------------------
+  ; sep-end-by / sep-end-by1
+  ; ----------------------------------------
+
+  (assert-true test
+    (match (Parser.parse
+             (Parser.sep-end-by1 (Parser.byte \a) (Parser.byte \,))
+             "a,a,a")
+      (Result.Success arr) (= 3 (Array.length &arr))
+      _ false)
+    "sep-end-by1: 3 elements without trailing sep")
+
+  (assert-true test
+    (match (Parser.parse
+             (Parser.sep-end-by1 (Parser.byte \a) (Parser.byte \,))
+             "a,a,a,")
+      (Result.Success arr) (= 3 (Array.length &arr))
+      _ false)
+    "sep-end-by1: 3 elements with trailing sep")
+
+  (assert-true test
+    (match (Parser.parse
+             (Parser.sep-end-by1 (Parser.byte \a) (Parser.byte \,))
+             "a")
+      (Result.Success arr) (= 1 (Array.length &arr))
+      _ false)
+    "sep-end-by1: single element")
+
+  (assert-true test
+    (match (Parser.parse
+             (Parser.sep-end-by1 (Parser.byte \a) (Parser.byte \,))
+             "a,")
+      (Result.Success arr) (= 1 (Array.length &arr))
+      _ false)
+    "sep-end-by1: single element with trailing sep")
+
+  (assert-true test
+    (err? &(Parser.parse
+             (Parser.sep-end-by1 (Parser.byte \a) (Parser.byte \,))
+             ""))
+    "sep-end-by1: fails on empty input")
+
+  (assert-true test
+    (match (Parser.parse
+             (Parser.sep-end-by (Parser.byte \a) (Parser.byte \,))
+             "")
+      (Result.Success arr) (= 0 (Array.length &arr))
+      _ false)
+    "sep-end-by: allows empty")
+
+  (assert-true test
+    (match (Parser.parse
+             (Parser.sep-end-by (Parser.byte \a) (Parser.byte \,))
+             "a,a,")
+      (Result.Success arr) (= 2 (Array.length &arr))
+      _ false)
+    "sep-end-by: 2 elements with trailing sep")
+
+  (assert-true test
+    (match (Parser.parse
+             (Parser.sep-end-by (Parser.byte \a) (Parser.byte \,))
+             "a,a")
+      (Result.Success arr) (= 2 (Array.length &arr))
+      _ false)
+    "sep-end-by: 2 elements without trailing sep")
+
+  ; ----------------------------------------
+  ; Lexer character class parsers
+  ; ----------------------------------------
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.Lexer.digit) "5"))
+    "Lexer.digit: matches digit")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.digit) "a"))
+    "Lexer.digit: rejects non-digit")
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.Lexer.letter) "a"))
+    "Lexer.letter: matches lowercase")
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.Lexer.letter) "Z"))
+    "Lexer.letter: matches uppercase")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.letter) "5"))
+    "Lexer.letter: rejects digit")
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.Lexer.upper) "A"))
+    "Lexer.upper: matches uppercase")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.upper) "a"))
+    "Lexer.upper: rejects lowercase")
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.Lexer.lower) "a"))
+    "Lexer.lower: matches lowercase")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.lower) "A"))
+    "Lexer.lower: rejects uppercase")
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.Lexer.alpha-num) "a"))
+    "Lexer.alpha-num: matches letter")
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.Lexer.alpha-num) "5"))
+    "Lexer.alpha-num: matches digit")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.alpha-num) "!"))
+    "Lexer.alpha-num: rejects punctuation")
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.Lexer.space) " "))
+    "Lexer.space: matches space")
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.Lexer.space) "\t"))
+    "Lexer.space: matches tab")
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.Lexer.space) "\n"))
+    "Lexer.space: matches newline")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.space) "a"))
+    "Lexer.space: rejects non-whitespace")
+
+  ; ----------------------------------------
+  ; Edge case: lookahead consumed failure
+  ; ----------------------------------------
+
+  (assert-true test
+    (err? &(Parser.parse
+             (Parser.lookahead
+               (Parser.seq (Parser.byte \a) (Parser.byte \b)))
+             "ax"))
+    "lookahead: consumed failure of inner parser propagates")
+
+  ; ----------------------------------------
+  ; Edge case: not-followed-by consumed
+  ; ----------------------------------------
+
+  (assert-true test
+    (ok? &(Parser.parse-partial
+             (Parser.then
+               (Parser.byte \a)
+               (Parser.not-followed-by
+                 (Parser.seq (Parser.byte \b) (Parser.byte \c))))
+             "ab"))
+    "not-followed-by: inner consumed failure counts as failure (succeeds)")
+
+  ; ----------------------------------------
+  ; Edge case: block-comment overlapping delimiters
+  ; ----------------------------------------
+
+  (assert-true test
+    (ok? &(Parser.parse
+             (Parser.Lexer.block-comment @"<!" @"!>")
+             "<!hello!>"))
+    "block-comment overlapping delimiters: delimiters share '!' char")
+
+  (assert-true test
+    (ok? &(Parser.parse
+             (Parser.Lexer.block-comment @"(*" @"*)")
+             "(***)"))
+    "block-comment overlapping delimiters: *** contains close then leftover")
+
+  ; ----------------------------------------
+  ; Edge case: chainl1 multiple ops
+  ; ----------------------------------------
+
+  (assert-equal test 150
+    (match (Parser.parse
+             (Parser.chainl1
+               (Parser.Lexer.integer)
+               (Parser.alt
+                 (Parser.map (Parser.Lexer.symbol @"+") (fn [_] Int.+))
+                 (Parser.map (Parser.Lexer.symbol @"*") (fn [_] Int.*))))
+             "2+3*4+5*6")
+      (Result.Success n) n
+      _ -1)
+    "chainl1: mixed ops left-assoc ((((2+3)*4)+5)*6) = 150")
+
+  ; ----------------------------------------
+  ; Edge case: string-ci empty on non-empty input
+  ; ----------------------------------------
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.string-ci @"") "hello"))
+    "string-ci: empty pattern on non-empty input fails (trailing unconsumed)")
+
+  ; ----------------------------------------
+  ; Edge case: range lo>hi
+  ; ----------------------------------------
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.range 5 3 (Parser.byte \a)) "aaa"))
+    "range lo>hi: mandatory phase demands lo=5, fails when only 3 available")
 )
