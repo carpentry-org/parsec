@@ -1276,4 +1276,186 @@
   (assert-true test
     (err? &(Parser.parse (the (Parser Double) (Parser.Lexer.float)) "abc"))
     "float: fails on non-numeric input")
+
+  ; ----------------------------------------
+  ; string-ci
+  ; ----------------------------------------
+
+  (assert-equal test "Hello"
+    &(match (Parser.parse (Parser.string-ci @"Hello") "Hello")
+       (Result.Success s) s
+       (Result.Error _)   @"")
+    "string-ci: exact case match returns input slice")
+
+  (assert-equal test "HELLO"
+    &(match (Parser.parse (Parser.string-ci @"hello") "HELLO")
+       (Result.Success s) s
+       (Result.Error _)   @"")
+    "string-ci: different case matches, returns input slice")
+
+  (assert-equal test "hElLo"
+    &(match (Parser.parse (Parser.string-ci @"HeLLo") "hElLo")
+       (Result.Success s) s
+       (Result.Error _)   @"")
+    "string-ci: mixed case matches")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.string-ci @"hello") "world"))
+    "string-ci: fails on mismatch")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.string-ci @"hello") "hel"))
+    "string-ci: fails when input shorter than literal")
+
+  (assert-equal test "FOO123"
+    &(match (Parser.parse (Parser.string-ci @"foo123") "FOO123")
+       (Result.Success s) s
+       (Result.Error _)   @"")
+    "string-ci: non-alpha chars unaffected by case folding")
+
+  (assert-true test
+    (ok? &(Parser.parse
+            (Parser.alt (Parser.string-ci @"foo") (Parser.string-ci @"for"))
+            "FOR"))
+    "string-ci: atomic, alt picks second after partial mismatch of first")
+
+  (assert-true test
+    (match (Parser.parse (Parser.string-ci @"") "")
+      (Result.Success s) (= "" &s)
+      _ false)
+    "string-ci: empty string matches empty input")
+
+  ; ----------------------------------------
+  ; range
+  ; ----------------------------------------
+
+  (assert-true test
+    (match (Parser.parse (Parser.range 2 4 (Parser.byte \a)) "aa")
+      (Result.Success arr) (= 2 (Array.length &arr))
+      _ false)
+    "range 2-4: exact min on \"aa\"")
+
+  (assert-true test
+    (match (Parser.parse (Parser.range 2 4 (Parser.byte \a)) "aaaa")
+      (Result.Success arr) (= 4 (Array.length &arr))
+      _ false)
+    "range 2-4: exact max on \"aaaa\"")
+
+  (assert-true test
+    (match (Parser.parse (Parser.range 2 4 (Parser.byte \a)) "aaa")
+      (Result.Success arr) (= 3 (Array.length &arr))
+      _ false)
+    "range 2-4: between min and max on \"aaa\"")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.range 2 4 (Parser.byte \a)) "a"))
+    "range 2-4: fails below min")
+
+  (assert-true test
+    (ok? &(Parser.parse
+            (Parser.seq (Parser.range 2 4 (Parser.byte \a)) (Parser.byte \b))
+            "aaaab"))
+    "range 2-4: greedy stops at max, leaves remaining for next parser")
+
+  (assert-true test
+    (match (Parser.parse (Parser.range 0 3 (Parser.byte \a)) "")
+      (Result.Success arr) (= 0 (Array.length &arr))
+      _ false)
+    "range 0-3: min 0 allows empty")
+
+  (assert-true test
+    (match (Parser.parse (Parser.range 3 3 (Parser.byte \a)) "aaa")
+      (Result.Success arr) (= 3 (Array.length &arr))
+      _ false)
+    "range 3-3: min=max behaves like count")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.range 3 3 (Parser.byte \a)) "aa"))
+    "range 3-3: fails when fewer than required")
+
+  ; ----------------------------------------
+  ; Lexer.line-comment
+  ; ----------------------------------------
+
+  (assert-true test
+    (match (Parser.parse-partial (Parser.Lexer.line-comment @"//") "// hello\nrest")
+      (Result.Success p) (= "\nrest" (Pair.b &p))
+      _ false)
+    "line-comment: consumes to EOL, newline not consumed")
+
+  (assert-true test
+    (match (Parser.parse-partial (Parser.Lexer.line-comment @"//") "// hello")
+      (Result.Success p) (= "" (Pair.b &p))
+      _ false)
+    "line-comment: consumes to EOF when no newline")
+
+  (assert-true test
+    (match (Parser.parse-partial (Parser.Lexer.line-comment @"//") "//\nrest")
+      (Result.Success p) (= "\nrest" (Pair.b &p))
+      _ false)
+    "line-comment: empty comment body")
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.Lexer.line-comment @"//") "//"))
+    "line-comment: just prefix at EOF")
+
+  (assert-true test
+    (err? &(Parser.parse-partial (Parser.Lexer.line-comment @"//") "hello"))
+    "line-comment: fails when prefix doesn't match")
+
+  (assert-true test
+    (ok? &(Parser.parse
+            (Parser.then (Parser.Lexer.line-comment @"--")
+                         (Parser.then (Parser.byte \newline) (Parser.string @"ok")))
+            "-- comment\nok"))
+    "line-comment: composes with following parsers after newline")
+
+  ; ----------------------------------------
+  ; Lexer.block-comment
+  ; ----------------------------------------
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.Lexer.block-comment @"/*" @"*/") "/* hello */"))
+    "block-comment: basic comment")
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.Lexer.block-comment @"/*" @"*/")
+                        "/* /* inner */ outer */"))
+    "block-comment: nested comments")
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.Lexer.block-comment @"/*" @"*/")
+                        "/* /* /* deep */ */ */"))
+    "block-comment: deeply nested (3 levels)")
+
+  (assert-true test
+    (err? &(Parser.parse-partial (Parser.Lexer.block-comment @"/*" @"*/")
+                                 "/* unclosed"))
+    "block-comment: unclosed comment fails (consumed)")
+
+  (assert-true test
+    (err? &(Parser.parse-partial (Parser.Lexer.block-comment @"/*" @"*/")
+                                 "hello"))
+    "block-comment: fails when open delimiter doesn't match")
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.Lexer.block-comment @"/*" @"*/") "/**/"))
+    "block-comment: empty comment body")
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.Lexer.block-comment @"/*" @"*/")
+                        "/* line1\nline2 */"))
+    "block-comment: spans multiple lines")
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.Lexer.block-comment @"{-" @"-}")
+                        "{- hello -}"))
+    "block-comment: different delimiters ({- -})")
+
+  (assert-true test
+    (match (Parser.parse-partial (Parser.Lexer.block-comment @"/*" @"*/")
+                                 "/* comment */rest")
+      (Result.Success p) (= "rest" (Pair.b &p))
+      _ false)
+    "block-comment: leaves unconsumed input after close delimiter")
 )

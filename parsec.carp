@@ -1532,3 +1532,180 @@ the `ParseErr`.")
         (Reply.OkEmpty v c)
           (Result.Success
             (Pair.init v (String.byte-slice src @(Cursor.pos &c) len)))))))
+
+(defmodule Parser
+  (doc string-ci "matches the literal string `s` case-insensitively
+(ASCII only). Returns the matched slice from the input, preserving
+its original case. Atomic: on partial mismatch, fails empty.")
+  (defn string-ci [s]
+    (let [slen (String.length &s)
+          lbl (fmt "\"%s\" (case-insensitive)" &s)]
+      (Parser.init
+        (fn [src len cur]
+          (let [pos @(Cursor.pos cur)]
+            (if (Int.> (Int.+ pos slen) len)
+              (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))
+              (let-do [matches true]
+                (for [i 0 slen]
+                  (let [a (String.char-at &s i)
+                        b (String.char-at src (Int.+ pos i))
+                        al (if (and (Char.>= a \A) (Char.<= a \Z))
+                          (Char.from-int (Int.+ (Char.to-int a) 32))
+                          a)
+                        bl (if (and (Char.>= b \A) (Char.<= b \Z))
+                          (Char.from-int (Int.+ (Char.to-int b) 32))
+                          b)]
+                    (unless (Char.= al bl) (set! matches false))))
+                (if matches
+                  (let-do [c @cur]
+                    (for [i 0 slen]
+                      (set! c
+                            (Cursor.advance &c
+                                            (String.char-at src (Int.+ pos i)))))
+                    (if (Int.> slen 0)
+                      (Reply.OkConsumed
+                        (String.byte-slice src pos (Int.+ pos slen))
+                        c)
+                      (Reply.OkEmpty
+                        (String.byte-slice src pos (Int.+ pos slen))
+                        c)))
+                  (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))))))))))
+
+  (doc range "runs `p` between `lo` and `hi` times (inclusive),
+collecting results into an `Array`. The first `lo` applications are
+mandatory; after that, `p` is applied greedily up to `hi` times
+total, stopping on empty failure or empty success (same guard as
+`many`).")
+  (defn range [lo hi p]
+    (Parser.init
+      (fn [src len cur]
+        (let-do [acc []
+                 c @cur
+                 err (the (Maybe ParseErr) (Maybe.Nothing))
+                 consumed-any false
+                 i 0
+                 going true]
+          ; Phase 1: mandatory (first lo iterations)
+          (while-do (and going (Int.< i lo))
+            (match (~(Parser.run &p) src len &c)
+              (Reply.OkConsumed v c2)
+                (do
+                  (set! acc (Array.push-back acc v))
+                  (set! c c2)
+                  (set! consumed-any true))
+              (Reply.OkEmpty v c2)
+                (do (set! acc (Array.push-back acc v)) (set! c c2))
+              (Reply.ErrEmpty e)
+                (do (set! err (Maybe.Just e)) (set! going false))
+              (Reply.ErrConsumed e)
+                (do (set! err (Maybe.Just e)) (set! going false)))
+            (set! i (Int.inc i)))
+          ; Phase 2: optional (up to hi - lo more)
+          (while-do (and going (Int.< i hi))
+            (match (~(Parser.run &p) src len &c)
+              (Reply.OkConsumed v c2)
+                (do
+                  (set! acc (Array.push-back acc v))
+                  (set! c c2)
+                  (set! consumed-any true))
+              (Reply.OkEmpty _ _) (set! going false)
+              (Reply.ErrEmpty _) (set! going false)
+              (Reply.ErrConsumed e)
+                (do (set! err (Maybe.Just e)) (set! going false)))
+            (set! i (Int.inc i)))
+          (match err
+            (Maybe.Just e)
+              (if consumed-any (Reply.ErrConsumed e) (Reply.ErrEmpty e))
+            (Maybe.Nothing)
+              (if consumed-any (Reply.OkConsumed acc c) (Reply.OkEmpty acc c)))))))
+
+  (defmodule Lexer
+    (doc line-comment "skips a line comment: matches the literal prefix
+`prefix`, then consumes all bytes until end of line or end of input.
+The newline itself is not consumed. Returns unit.")
+    (defn line-comment [prefix]
+      (Parser.then (Parser.string prefix)
+                   (Parser.map
+                     (Parser.take-while (fn [c] (not (Char.= c \newline))))
+                     (fn [_] ()))))
+
+    (doc block-comment "skips a block comment delimited by `open` and
+`close`, with nesting support. An `open` inside the comment
+increments the depth, and each `close` decrements it. The comment
+ends when depth reaches zero. Fails (consumed) if EOF is reached
+before the comment closes. Returns unit.")
+    (defn block-comment [open close]
+      (let [olen (String.length &open)
+            clen (String.length &close)
+            lbl (fmt "\"%s\"" &open)]
+        (Parser.init
+          (fn [src len cur]
+            (let [pos @(Cursor.pos cur)]
+              (if (Int.> (Int.+ pos olen) len)
+                (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))
+                (let-do [matches true]
+                  (for [i 0 olen]
+                    (unless (Char.= (String.char-at &open i)
+                                    (String.char-at src (Int.+ pos i)))
+                      (set! matches false)))
+                  (if (not matches)
+                    (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))
+                    (let-do [c @cur]
+                      (for [i 0 olen]
+                        (set! c
+                              (Cursor.advance &c
+                                              (String.char-at src (Int.+ pos i)))))
+                      (let-do [depth 1
+                               going true
+                               err false]
+                        (while-do going
+                          (let [p @(Cursor.pos &c)]
+                            (if (Int.>= p len)
+                              (do (set! going false) (set! err true))
+                              (let-do [is-close false]
+                                (when-do (Int.<= (Int.+ p clen) len)
+                                  (let-do [m true]
+                                    (for [i 0 clen]
+                                      (unless (Char.= (String.char-at &close i)
+                                                      (String.char-at src
+                                                                      (Int.+ p i)))
+                                        (set! m false)))
+                                    (set! is-close m)))
+                                (if is-close
+                                  (do
+                                    (set! depth (Int.dec depth))
+                                    (for [i 0 clen]
+                                      (set! c
+                                            (Cursor.advance &c
+                                                            (String.char-at src
+                                                                            (Int.+ p
+                                                                                   i)))))
+                                    (when (= depth 0) (set! going false)))
+                                  (let-do [is-open false]
+                                    (when-do (Int.<= (Int.+ p olen) len)
+                                      (let-do [m true]
+                                        (for [i 0 olen]
+                                          (unless (Char.= (String.char-at &open
+                                                                          i)
+                                                          (String.char-at src
+                                                                          (Int.+ p
+                                                                                 i)))
+                                            (set! m false)))
+                                        (set! is-open m)))
+                                    (if is-open
+                                      (do
+                                        (set! depth (Int.inc depth))
+                                        (for [i 0 olen]
+                                          (set! c
+                                                (Cursor.advance &c
+                                                                (String.char-at src
+                                                                                (Int.+ p
+                                                                                       i))))))
+                                      (set! c
+                                            (Cursor.advance &c
+                                                            (String.char-at src
+                                                                            p))))))))))
+                        (if err
+                          (Reply.ErrConsumed
+                            (ParseErr.expected-at &c @"end of block comment"))
+                          (Reply.OkConsumed () c))))))))))))))

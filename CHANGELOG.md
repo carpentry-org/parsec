@@ -6,6 +6,17 @@ the project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `Parser.string-ci s` — case-insensitive (ASCII) string matching.
+  Returns the matched slice from the input, preserving its original
+  case. Atomic like `Parser.string`.
+- `Parser.range lo hi p` — runs `p` between `lo` and `hi` times
+  (inclusive). The first `lo` applications are mandatory; after that,
+  `p` is applied greedily up to `hi` times total.
+- `Parser.Lexer.line-comment prefix` — skips from `prefix` to end of
+  line (or EOF). The newline itself is not consumed.
+- `Parser.Lexer.block-comment open close` — skips a block comment
+  with nesting support. An `open` inside the comment increments
+  depth; each `close` decrements it.
 - `Parser.at-most n p` — runs `p` up to `n` times, collecting
   results. Stops early on empty failure (like `many` with a cap).
 - `Parser.at-least n p` — runs `p` at least `n` times, then
