@@ -43,6 +43,17 @@ the project follows [Semantic Versioning](https://semver.org/).
 - `Parser.Lexer.float` — parses a floating-point number (optional
   sign, integer/fractional digits, optional exponent) and returns
   a `Double`.
+- `Parser.sep-end-by p sep` / `Parser.sep-end-by1 p sep` — like
+  `sep-by` / `sep-by1` but allow an optional trailing separator.
+- `Parser.option default p` — tries `p`; on empty failure, returns
+  `default` instead of `Maybe`. Consumed failures propagate.
+- `Parser.skip p` — runs `p` and discards its value, returning
+  `()`. Useful for consumption-only effects.
+- `Parser.Lexer.digit`, `Parser.Lexer.letter`,
+  `Parser.Lexer.upper`, `Parser.Lexer.lower`,
+  `Parser.Lexer.alpha-num`, `Parser.Lexer.space` — character class
+  parsers that match a single ASCII byte. These were previously
+  private predicates only; now exposed as public combinators.
 
 ### Fixed
 - `Lexer.unsigned-int` and `Lexer.integer` now return a parse
@@ -63,6 +74,11 @@ the project follows [Semantic Versioning](https://semver.org/).
 - Added tests verifying `unexpected` appears in `satisfy` and
   `eof` error messages.
 - Added tests for `Parser.parse-partial`.
+- Added edge case tests: `lookahead` consumed failure,
+  `not-followed-by` consumed inner failure, `block-comment`
+  overlapping delimiters, `chainl1` with multiple operator types,
+  `string-ci` empty pattern on non-empty input, `range` with
+  lo > hi.
 
 ## [0.2.0]
 
