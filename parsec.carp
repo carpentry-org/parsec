@@ -420,12 +420,13 @@ the real parser before parsing. Companion to `recurse`.")
                              @(ParseErr.unexpected &e)
                              (Expected.One @&name)))))))
 
-  (doc string "matches the literal string `s` byte-for-byte.
-Atomic: on partial mismatch, fails empty (no consumed failure
-mid-string).")
-  (defn string [s]
-    (let [slen (String.length &s)
-          lbl (fmt "\"%s\"" &s)]
+  (private string-match)
+  (hidden string-match)
+  (doc string-match "shared helper for `string` and `string-ci`. Matches the
+literal `s` against the input using `cmp` to compare each character pair.
+Returns the matched input slice on success.")
+  (defn string-match [s lbl cmp]
+    (let [slen (String.length &s)]
       (Parser.init
         (fn [src len cur]
           (let [pos @(Cursor.pos cur)]
@@ -433,8 +434,8 @@ mid-string).")
               (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))
               (let-do [matches true]
                 (for [i 0 slen]
-                  (unless (Char.= (String.char-at &s i)
-                                  (String.char-at src (Int.+ pos i)))
+                  (unless (cmp (String.char-at &s i)
+                               (String.char-at src (Int.+ pos i)))
                     (set! matches false)))
                 (if matches
                   (let-do [c @cur]
@@ -443,9 +444,18 @@ mid-string).")
                             (Cursor.advance &c
                                             (String.char-at src (Int.+ pos i)))))
                     (if (Int.> slen 0)
-                      (Reply.OkConsumed @&s c)
-                      (Reply.OkEmpty @&s c)))
+                      (Reply.OkConsumed
+                        (String.byte-slice src pos (Int.+ pos slen))
+                        c)
+                      (Reply.OkEmpty
+                        (String.byte-slice src pos (Int.+ pos slen))
+                        c)))
                   (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))))))))))
+
+  (doc string "matches the literal string `s` byte-for-byte.
+Atomic: on partial mismatch, fails empty (no consumed failure
+mid-string).")
+  (defn string [s] (let [lbl (fmt "\"%s\"" &s)] (string-match s lbl Char.=)))
 
   (doc optional "if `p` succeeds, wraps the value in `Just`; if `p`
 fails empty, succeeds with `Nothing` without consuming. Consumed
@@ -1622,38 +1632,17 @@ the `ParseErr`.")
 (ASCII only). Returns the matched slice from the input, preserving
 its original case. Atomic: on partial mismatch, fails empty.")
   (defn string-ci [s]
-    (let [slen (String.length &s)
-          lbl (fmt "\"%s\" (case-insensitive)" &s)]
-      (Parser.init
-        (fn [src len cur]
-          (let [pos @(Cursor.pos cur)]
-            (if (Int.> (Int.+ pos slen) len)
-              (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))
-              (let-do [matches true]
-                (for [i 0 slen]
-                  (let [a (String.char-at &s i)
-                        b (String.char-at src (Int.+ pos i))
-                        al (if (and (Char.>= a \A) (Char.<= a \Z))
-                          (Char.from-int (Int.+ (Char.to-int a) 32))
-                          a)
-                        bl (if (and (Char.>= b \A) (Char.<= b \Z))
-                          (Char.from-int (Int.+ (Char.to-int b) 32))
-                          b)]
-                    (unless (Char.= al bl) (set! matches false))))
-                (if matches
-                  (let-do [c @cur]
-                    (for [i 0 slen]
-                      (set! c
-                            (Cursor.advance &c
-                                            (String.char-at src (Int.+ pos i)))))
-                    (if (Int.> slen 0)
-                      (Reply.OkConsumed
-                        (String.byte-slice src pos (Int.+ pos slen))
-                        c)
-                      (Reply.OkEmpty
-                        (String.byte-slice src pos (Int.+ pos slen))
-                        c)))
-                  (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))))))))))
+    (let [lbl (fmt "\"%s\" (case-insensitive)" &s)]
+      (string-match s
+                    lbl
+                    (fn [a b]
+                      (let [al (if (and (Char.>= a \A) (Char.<= a \Z))
+                              (Char.from-int (Int.+ (Char.to-int a) 32))
+                              a)
+                            bl (if (and (Char.>= b \A) (Char.<= b \Z))
+                              (Char.from-int (Int.+ (Char.to-int b) 32))
+                              b)]
+                        (Char.= al bl))))))
 
   (doc range "runs `p` between `lo` and `hi` times (inclusive),
 collecting results into an `Array`. The first `lo` applications are
