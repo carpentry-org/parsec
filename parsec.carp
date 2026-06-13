@@ -1824,13 +1824,14 @@ performance. Fails on overflow.")
       (Parser.init
         (fn [src len cur]
           (let [pos @(Cursor.pos cur)]
-            (if (Int.> (Int.+ pos 2) len)
-              (Reply.ErrEmpty (ParseErr.expected-at cur @"hex integer"))
-              (if (not (and (Char.= (String.char-at src pos) \0)
-                            (let [x (String.char-at src (Int.+ pos 1))]
-                              (or (Char.= x \x) (Char.= x \X)))))
+            (cond
+              (Int.> (Int.+ pos 2) len)
                 (Reply.ErrEmpty (ParseErr.expected-at cur @"hex integer"))
-                (let-do [c (Cursor.advance cur \0)
+              (not (and (Char.= (String.char-at src pos) \0)
+                        (let [x (String.char-at src (Int.+ pos 1))]
+                          (or (Char.= x \x) (Char.= x \X)))))
+                (Reply.ErrEmpty (ParseErr.expected-at cur @"hex integer"))
+              (let-do [c (Cursor.advance cur \0)
                          digit-start 0
                          val 0
                          going true
@@ -1855,7 +1856,7 @@ performance. Fails on overflow.")
                         (if (Int.< dv 0)
                           (set! going false)
                           (let [temp (Int.* val 16)]
-                            (if (not (= (Int./ temp 16) val))
+                            (if (/= (Int./ temp 16) val)
                               (do (set! overflow true) (set! going false))
                               (let [new-val (Int.+ temp dv)]
                                 (if (Int.< new-val temp)
@@ -1864,13 +1865,14 @@ performance. Fails on overflow.")
                                   (do (set! val new-val)
                                       (set! c
                                         (Cursor.advance &c ch)))))))))))
-                  (if (= @(Cursor.pos &c) digit-start)
-                    (Reply.ErrConsumed
-                      (ParseErr.expected-at &c @"hex digit"))
-                    (if overflow
+                  (cond
+                    (= @(Cursor.pos &c) digit-start)
+                      (Reply.ErrConsumed
+                        (ParseErr.expected-at &c @"hex digit"))
+                    overflow
                       (Reply.ErrConsumed
                         (ParseErr.expected-at &c @"hex integer"))
-                      (Reply.OkConsumed val c))))))))))
+                    (Reply.OkConsumed val c)))))))))
 
     (doc octal-int "parses an octal integer literal: `0o` or `0O`
 prefix followed by one or more octal digits (`0`-`7`). Returns an
@@ -1880,15 +1882,16 @@ overflow.")
       (Parser.init
         (fn [src len cur]
           (let [pos @(Cursor.pos cur)]
-            (if (Int.> (Int.+ pos 2) len)
-              (Reply.ErrEmpty
-                (ParseErr.expected-at cur @"octal integer"))
-              (if (not (and (Char.= (String.char-at src pos) \0)
-                            (let [x (String.char-at src (Int.+ pos 1))]
-                              (or (Char.= x \o) (Char.= x \O)))))
+            (cond
+              (Int.> (Int.+ pos 2) len)
                 (Reply.ErrEmpty
                   (ParseErr.expected-at cur @"octal integer"))
-                (let-do [c (Cursor.advance cur \0)
+              (not (and (Char.= (String.char-at src pos) \0)
+                        (let [x (String.char-at src (Int.+ pos 1))]
+                          (or (Char.= x \o) (Char.= x \O)))))
+                (Reply.ErrEmpty
+                  (ParseErr.expected-at cur @"octal integer"))
+              (let-do [c (Cursor.advance cur \0)
                          digit-start 0
                          val 0
                          going true
@@ -1906,7 +1909,7 @@ overflow.")
                         (if (Int.< dv 0)
                           (set! going false)
                           (let [temp (Int.* val 8)]
-                            (if (not (= (Int./ temp 8) val))
+                            (if (/= (Int./ temp 8) val)
                               (do (set! overflow true) (set! going false))
                               (let [new-val (Int.+ temp dv)]
                                 (if (Int.< new-val temp)
@@ -1915,13 +1918,14 @@ overflow.")
                                   (do (set! val new-val)
                                       (set! c
                                         (Cursor.advance &c ch)))))))))))
-                  (if (= @(Cursor.pos &c) digit-start)
-                    (Reply.ErrConsumed
-                      (ParseErr.expected-at &c @"octal digit"))
-                    (if overflow
+                  (cond
+                    (= @(Cursor.pos &c) digit-start)
+                      (Reply.ErrConsumed
+                        (ParseErr.expected-at &c @"octal digit"))
+                    overflow
                       (Reply.ErrConsumed
                         (ParseErr.expected-at &c @"octal integer"))
-                      (Reply.OkConsumed val c))))))))))
+                    (Reply.OkConsumed val c)))))))))
 
     (doc binary-int "parses a binary integer literal: `0b` or `0B`
 prefix followed by one or more binary digits (`0` or `1`). Returns an
@@ -1931,15 +1935,16 @@ overflow.")
       (Parser.init
         (fn [src len cur]
           (let [pos @(Cursor.pos cur)]
-            (if (Int.> (Int.+ pos 2) len)
-              (Reply.ErrEmpty
-                (ParseErr.expected-at cur @"binary integer"))
-              (if (not (and (Char.= (String.char-at src pos) \0)
-                            (let [x (String.char-at src (Int.+ pos 1))]
-                              (or (Char.= x \b) (Char.= x \B)))))
+            (cond
+              (Int.> (Int.+ pos 2) len)
                 (Reply.ErrEmpty
                   (ParseErr.expected-at cur @"binary integer"))
-                (let-do [c (Cursor.advance cur \0)
+              (not (and (Char.= (String.char-at src pos) \0)
+                        (let [x (String.char-at src (Int.+ pos 1))]
+                          (or (Char.= x \b) (Char.= x \B)))))
+                (Reply.ErrEmpty
+                  (ParseErr.expected-at cur @"binary integer"))
+              (let-do [c (Cursor.advance cur \0)
                          digit-start 0
                          val 0
                          going true
@@ -1957,7 +1962,7 @@ overflow.")
                         (if (Int.< dv 0)
                           (set! going false)
                           (let [temp (Int.* val 2)]
-                            (if (not (= (Int./ temp 2) val))
+                            (if (/= (Int./ temp 2) val)
                               (do (set! overflow true) (set! going false))
                               (let [new-val (Int.+ temp dv)]
                                 (if (Int.< new-val temp)
@@ -1966,10 +1971,11 @@ overflow.")
                                   (do (set! val new-val)
                                       (set! c
                                         (Cursor.advance &c ch)))))))))))
-                  (if (= @(Cursor.pos &c) digit-start)
-                    (Reply.ErrConsumed
-                      (ParseErr.expected-at &c @"binary digit"))
-                    (if overflow
+                  (cond
+                    (= @(Cursor.pos &c) digit-start)
+                      (Reply.ErrConsumed
+                        (ParseErr.expected-at &c @"binary digit"))
+                    overflow
                       (Reply.ErrConsumed
                         (ParseErr.expected-at &c @"binary integer"))
-                      (Reply.OkConsumed val c))))))))))))
+                    (Reply.OkConsumed val c)))))))))))
