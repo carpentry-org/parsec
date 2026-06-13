@@ -1635,6 +1635,157 @@
     "Lexer.space: rejects non-whitespace")
 
   ; ----------------------------------------
+  ; Lexer.hex-int
+  ; ----------------------------------------
+
+  (assert-equal test 255
+    (match (Parser.parse (Parser.Lexer.hex-int) "0xFF")
+      (Result.Success n) n
+      _ -1)
+    "hex-int: 0xFF = 255")
+
+  (assert-equal test 255
+    (match (Parser.parse (Parser.Lexer.hex-int) "0XFF")
+      (Result.Success n) n
+      _ -1)
+    "hex-int: 0XFF uppercase prefix")
+
+  (assert-equal test 255
+    (match (Parser.parse (Parser.Lexer.hex-int) "0xff")
+      (Result.Success n) n
+      _ -1)
+    "hex-int: 0xff lowercase digits")
+
+  (assert-equal test 171
+    (match (Parser.parse (Parser.Lexer.hex-int) "0xAb")
+      (Result.Success n) n
+      _ -1)
+    "hex-int: 0xAb mixed case digits")
+
+  (assert-equal test 0
+    (match (Parser.parse (Parser.Lexer.hex-int) "0x0")
+      (Result.Success n) n
+      _ -1)
+    "hex-int: 0x0 = 0")
+
+  (assert-equal test 0
+    (match (Parser.parse (Parser.Lexer.hex-int) "0x00")
+      (Result.Success n) n
+      _ -1)
+    "hex-int: leading zeros")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.hex-int) ""))
+    "hex-int: fails on empty input")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.hex-int) "FF"))
+    "hex-int: fails without 0x prefix")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.hex-int) "0x"))
+    "hex-int: fails with prefix but no digits")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.hex-int) "0xg"))
+    "hex-int: fails with prefix but invalid digit")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.hex-int)
+                         "0xFFFFFFFFFFFFFFFF"))
+    "hex-int: rejects overflow")
+
+  ; ----------------------------------------
+  ; Lexer.octal-int
+  ; ----------------------------------------
+
+  (assert-equal test 8
+    (match (Parser.parse (Parser.Lexer.octal-int) "0o10")
+      (Result.Success n) n
+      _ -1)
+    "octal-int: 0o10 = 8")
+
+  (assert-equal test 8
+    (match (Parser.parse (Parser.Lexer.octal-int) "0O10")
+      (Result.Success n) n
+      _ -1)
+    "octal-int: 0O10 uppercase prefix")
+
+  (assert-equal test 255
+    (match (Parser.parse (Parser.Lexer.octal-int) "0o377")
+      (Result.Success n) n
+      _ -1)
+    "octal-int: 0o377 = 255")
+
+  (assert-equal test 0
+    (match (Parser.parse (Parser.Lexer.octal-int) "0o0")
+      (Result.Success n) n
+      _ -1)
+    "octal-int: 0o0 = 0")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.octal-int) ""))
+    "octal-int: fails on empty input")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.octal-int) "0o"))
+    "octal-int: fails with prefix but no digits")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.octal-int) "0o8"))
+    "octal-int: rejects digit 8")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.octal-int)
+                         "0o7777777777777777777777"))
+    "octal-int: rejects overflow")
+
+  ; ----------------------------------------
+  ; Lexer.binary-int
+  ; ----------------------------------------
+
+  (assert-equal test 5
+    (match (Parser.parse (Parser.Lexer.binary-int) "0b101")
+      (Result.Success n) n
+      _ -1)
+    "binary-int: 0b101 = 5")
+
+  (assert-equal test 5
+    (match (Parser.parse (Parser.Lexer.binary-int) "0B101")
+      (Result.Success n) n
+      _ -1)
+    "binary-int: 0B101 uppercase prefix")
+
+  (assert-equal test 255
+    (match (Parser.parse (Parser.Lexer.binary-int) "0b11111111")
+      (Result.Success n) n
+      _ -1)
+    "binary-int: 0b11111111 = 255")
+
+  (assert-equal test 0
+    (match (Parser.parse (Parser.Lexer.binary-int) "0b0")
+      (Result.Success n) n
+      _ -1)
+    "binary-int: 0b0 = 0")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.binary-int) ""))
+    "binary-int: fails on empty input")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.binary-int) "0b"))
+    "binary-int: fails with prefix but no digits")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.binary-int) "0b2"))
+    "binary-int: rejects digit 2")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.binary-int)
+                         "0b1111111111111111111111111111111111111111111111111111111111111111"))
+    "binary-int: rejects overflow (64 ones)")
+
+  ; ----------------------------------------
   ; Edge case: lookahead consumed failure
   ; ----------------------------------------
 

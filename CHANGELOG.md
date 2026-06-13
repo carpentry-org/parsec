@@ -6,6 +6,13 @@ the project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `Parser.Lexer.hex-int` — parses `0x`/`0X`-prefixed hexadecimal
+  integer literals (digits `0`-`9`, `a`-`f`, `A`-`F`). Fused; fails
+  on overflow.
+- `Parser.Lexer.octal-int` — parses `0o`/`0O`-prefixed octal integer
+  literals (digits `0`-`7`). Fused; fails on overflow.
+- `Parser.Lexer.binary-int` — parses `0b`/`0B`-prefixed binary
+  integer literals (digits `0` and `1`). Fused; fails on overflow.
 - `Parser.string-ci s` — case-insensitive (ASCII) string matching.
   Returns the matched slice from the input, preserving its original
   case. Atomic like `Parser.string`.
