@@ -1856,4 +1856,117 @@
   (assert-true test
     (err? &(Parser.parse (Parser.range 5 3 (Parser.byte \a)) "aaa"))
     "range lo>hi: mandatory phase demands lo=5, fails when only 3 available")
+
+  ; ----------------------------------------
+  ; Edge case: radix-int single digit
+  ; ----------------------------------------
+
+  (assert-equal test 1
+    (match (Parser.parse (Parser.Lexer.hex-int) "0x1")
+      (Result.Success n) n
+      _ -1)
+    "hex-int: single digit 0x1 = 1")
+
+  (assert-equal test 1
+    (match (Parser.parse (Parser.Lexer.octal-int) "0o1")
+      (Result.Success n) n
+      _ -1)
+    "octal-int: single digit 0o1 = 1")
+
+  (assert-equal test 1
+    (match (Parser.parse (Parser.Lexer.binary-int) "0b1")
+      (Result.Success n) n
+      _ -1)
+    "binary-int: single digit 0b1 = 1")
+
+  ; ----------------------------------------
+  ; Edge case: radix-int leading zeros
+  ; ----------------------------------------
+
+  (assert-equal test 0
+    (match (Parser.parse (Parser.Lexer.octal-int) "0o00")
+      (Result.Success n) n
+      _ -1)
+    "octal-int: leading zeros 0o00 = 0")
+
+  (assert-equal test 0
+    (match (Parser.parse (Parser.Lexer.binary-int) "0b00")
+      (Result.Success n) n
+      _ -1)
+    "binary-int: leading zeros 0b00 = 0")
+
+  ; ----------------------------------------
+  ; Edge case: radix-int parse-partial
+  ; ----------------------------------------
+
+  (assert-true test
+    (match (Parser.parse-partial (Parser.Lexer.hex-int) "0xFFrest")
+      (Result.Success p)
+        (and (= 255 @(Pair.a &p)) (= "rest" (Pair.b &p)))
+      _ false)
+    "hex-int: parse-partial stops at non-hex byte")
+
+  (assert-true test
+    (match (Parser.parse-partial (Parser.Lexer.octal-int) "0o77rest")
+      (Result.Success p)
+        (and (= 63 @(Pair.a &p)) (= "rest" (Pair.b &p)))
+      _ false)
+    "octal-int: parse-partial stops at non-octal byte")
+
+  (assert-true test
+    (match (Parser.parse-partial (Parser.Lexer.binary-int) "0b11rest")
+      (Result.Success p)
+        (and (= 3 @(Pair.a &p)) (= "rest" (Pair.b &p)))
+      _ false)
+    "binary-int: parse-partial stops at non-binary byte")
+
+  ; ----------------------------------------
+  ; Edge case: radix-int in choice
+  ; ----------------------------------------
+
+  (assert-equal test 255
+    (match (Parser.parse
+             (Parser.choice [(Parser.Lexer.hex-int)
+                             (Parser.Lexer.octal-int)
+                             (Parser.Lexer.binary-int)])
+             "0xFF")
+      (Result.Success n) n
+      _ -1)
+    "radix choice: picks hex-int for 0xFF")
+
+  (assert-equal test 8
+    (match (Parser.parse
+             (Parser.choice [(Parser.Lexer.hex-int)
+                             (Parser.Lexer.octal-int)
+                             (Parser.Lexer.binary-int)])
+             "0o10")
+      (Result.Success n) n
+      _ -1)
+    "radix choice: picks octal-int for 0o10")
+
+  (assert-equal test 5
+    (match (Parser.parse
+             (Parser.choice [(Parser.Lexer.hex-int)
+                             (Parser.Lexer.octal-int)
+                             (Parser.Lexer.binary-int)])
+             "0b101")
+      (Result.Success n) n
+      _ -1)
+    "radix choice: picks binary-int for 0b101")
+
+  ; ----------------------------------------
+  ; Edge case: bare "0" is not a valid radix prefix
+  ; ----------------------------------------
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.hex-int) "0"))
+    "hex-int: bare '0' too short for prefix")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.octal-int) "0"))
+    "octal-int: bare '0' too short for prefix")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.binary-int) "0"))
+    "binary-int: bare '0' too short for prefix")
 )
