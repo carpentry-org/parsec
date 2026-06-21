@@ -115,9 +115,9 @@ gathered from parsers that failed at that position. Render with
 sets. Position is taken from `b`.")
   (defn merge [a b]
     (let [exp (Expected.Many
-            (Array.concat
-              &[(Expected.to-array (ParseErr.expected &a))
-                (Expected.to-array (ParseErr.expected &b))]))
+            (Expected.append-into
+              (Expected.append-into [] (ParseErr.expected &a))
+              (ParseErr.expected &b)))
           unx (match @(ParseErr.unexpected &b)
             (Maybe.Just s) (Maybe.Just s)
             (Maybe.Nothing) @(ParseErr.unexpected &a))]
