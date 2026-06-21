@@ -434,9 +434,10 @@ Returns the matched input slice on success.")
               (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))
               (let-do [matches true]
                 (for [i 0 slen]
-                  (unless (cmp (String.char-at &s i)
-                               (String.char-at src (Int.+ pos i)))
-                    (set! matches false)))
+                  (unless-do (cmp (String.char-at &s i)
+                                  (String.char-at src (Int.+ pos i)))
+                    (set! matches false)
+                    (break)))
                 (if matches
                   (let-do [c @cur]
                     (for [i 0 slen]
@@ -1718,9 +1719,10 @@ before the comment closes. Returns unit.")
                 (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))
                 (let-do [matches true]
                   (for [i 0 olen]
-                    (unless (Char.= (String.char-at &open i)
-                                    (String.char-at src (Int.+ pos i)))
-                      (set! matches false)))
+                    (unless-do (Char.= (String.char-at &open i)
+                                       (String.char-at src (Int.+ pos i)))
+                      (set! matches false)
+                      (break)))
                   (if (not matches)
                     (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))
                     (let-do [c @cur]
@@ -1739,10 +1741,13 @@ before the comment closes. Returns unit.")
                                 (when-do (Int.<= (Int.+ p clen) len)
                                   (let-do [m true]
                                     (for [i 0 clen]
-                                      (unless (Char.= (String.char-at &close i)
-                                                      (String.char-at src
-                                                                      (Int.+ p i)))
-                                        (set! m false)))
+                                      (unless-do (Char.= (String.char-at &close
+                                                                         i)
+                                                         (String.char-at src
+                                                                         (Int.+ p
+                                                                                i)))
+                                        (set! m false)
+                                        (break)))
                                     (set! is-close m)))
                                 (if is-close
                                   (do
@@ -1758,12 +1763,13 @@ before the comment closes. Returns unit.")
                                     (when-do (Int.<= (Int.+ p olen) len)
                                       (let-do [m true]
                                         (for [i 0 olen]
-                                          (unless (Char.= (String.char-at &open
-                                                                          i)
-                                                          (String.char-at src
-                                                                          (Int.+ p
-                                                                                 i)))
-                                            (set! m false)))
+                                          (unless-do (Char.= (String.char-at &open
+                                                                             i)
+                                                             (String.char-at src
+                                                                             (Int.+ p
+                                                                                    i)))
+                                            (set! m false)
+                                            (break)))
                                         (set! is-open m)))
                                     (if is-open
                                       (do
