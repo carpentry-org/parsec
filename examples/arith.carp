@@ -12,9 +12,7 @@
 
 (def *expr* (the (Parser Int) (Parser.placeholder)))
 
-; ----------------------------------------------------------------
 ; factor = integer | '(' expr ')'
-; ----------------------------------------------------------------
 (defn factor []
   (Parser.alt
     (Parser.Lexer.lexeme (Parser.Lexer.integer))
@@ -23,10 +21,7 @@
                       (Parser.Lexer.symbol @")")
                       (Parser.recurse &*expr*)))))
 
-; ----------------------------------------------------------------
-; left-associative fold of `factor (op factor)*` into an Int.
 ; `op` here is a Char produced by symbol; we apply it to the accumulator.
-; ----------------------------------------------------------------
 (defn apply-op [acc op rhs]
   (cond
     (Char.= op \+) (Int.+ acc rhs)
@@ -50,9 +45,7 @@
           h
           pairs)))))
 
-; ----------------------------------------------------------------
 ; term = factor ('*' factor | '/' factor)*
-; ----------------------------------------------------------------
 (defn mul-op []
   (Parser.alt
     (Parser.map (Parser.Lexer.symbol @"*") (fn [_] \*))
@@ -60,9 +53,7 @@
 
 (defn term [] (chainl1 (factor) (mul-op) (factor)))
 
-; ----------------------------------------------------------------
 ; expr = term ('+' term | '-' term)*
-; ----------------------------------------------------------------
 (defn add-op []
   (Parser.alt
     (Parser.map (Parser.Lexer.symbol @"+") (fn [_] \+))
@@ -73,9 +64,7 @@
 ; Init the cell *expr* once, before any parsing.
 (def -init-arith (do (set! *expr* (expr-impl)) 0))
 
-; ----------------------------------------------------------------
 ; Top-level: skip leading whitespace, then expr.
-; ----------------------------------------------------------------
 (defn arith []
   (Parser.bind (Parser.Lexer.whitespace) (fn [_] (Parser.recurse &*expr*))))
 

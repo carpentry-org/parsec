@@ -44,6 +44,6 @@ the left branch fails *without consuming*. Wrap with
 - [Pitfalls](./Pitfalls.html) — concrete gotchas, ordered by how often they bite.")
 
 (save-docs Parser Cursor ParseErr Expected Reply Tutorial Pitfalls)
-;; Carp's save-docs hardcodes the index filename as <title>_index.html.
-;; Rename to docs/index.html.
+; Carp's save-docs hardcodes the index filename as <title>_index.html.
+; Rename to docs/index.html.
 (defn main [] (System.system "mv ./docs/parsec_index.html ./docs/index.html"))

@@ -6,10 +6,6 @@
 (load "Bench.carp")
 (use-all Bench IO)
 
-; ============================================================
-; Inputs
-; ============================================================
-
 (def *kv100* @"")
 (def *kv1000* @"")
 (def *ints100* @"")
@@ -51,11 +47,6 @@
     (set! *deep100* (build-deep-sexp 100))
     (set! *flat1k* (build-flat-sexp 1000))))
 
-; ============================================================
-; Grammars
-; ============================================================
-
-; --- kv pair ---
 ; Leaf parsers are built once into top-level cells. The bind chain
 ; references them via `Parser.recurse` so the grammar is well-built
 ; (no per-parse parser construction inside continuations), mirroring
@@ -83,10 +74,8 @@
     (set! -kv-semi (Parser.Lexer.symbol @";"))
     (set! p-kv (Parser.sep-by1 (make-kv-pair) (Parser.recurse &-kv-semi)))))
 
-; --- comma-separated integers ---
 (def p-int-list (Parser.sep-by (Parser.Lexer.integer) (Parser.byte \,)))
 
-; --- s-expression ---
 (defn sym-char? [c]
   (not
     (or (Char.= c \space)
@@ -119,10 +108,6 @@
 
 (def p-sexp
   (Parser.bind (Parser.Lexer.whitespace) (fn [_] (Parser.recurse &*sexp*))))
-
-; ============================================================
-; Bench helpers
-; ============================================================
 
 (defn run! [p src]
   (let [len (String.length src)

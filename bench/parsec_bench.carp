@@ -11,10 +11,6 @@
 (load "Bench.carp")
 (use-all Bench IO)
 
-; ============================================================
-; Inputs
-; ============================================================
-
 (def *aaaa* @"")
 ; 10_000 'a's
 (def *abc* @"")
@@ -57,15 +53,9 @@
     (set! *deep-parens* (build-deep-parens 100))
     (set! *kv-pairs* (build-kv 100))))
 
-; ============================================================
-; Parsers (pre-built, reused across iterations)
-; ============================================================
-
-; Char predicate as plain Carp fn.
 (defn alpha? [c]
   (or (and (Char.>= c \A) (Char.<= c \Z)) (and (Char.>= c \a) (Char.<= c \z))))
 
-; --- Bench targets ---
 (def p-byte-many (Parser.many (Parser.byte \a)))
 (def p-string-many (Parser.many (Parser.string @"abc")))
 (def p-take-while (Parser.take-while (fn [c] (alpha? c))))
@@ -93,18 +83,10 @@
                                    (fn [n] (Pair.init @&name n)))))))
     (Parser.Lexer.symbol @";")))
 
-; ============================================================
-; Run helpers — measure parse path only, no parser construction.
-; ============================================================
-
 (defn run! [p src]
   (let [len (String.length src)
         cur (Cursor.zero)]
     (ignore (~(Parser.run p) src len &cur))))
-
-; ============================================================
-; Bench functions
-; ============================================================
 
 (defn bench-byte-many [] (run! &p-byte-many &*aaaa*))
 (defn bench-string-many [] (run! &p-string-many &*abc*))
@@ -113,14 +95,9 @@
 (defn bench-parens [] (run! &p-parens &*deep-parens*))
 (defn bench-kv [] (run! &p-kv &*kv-pairs*))
 
-; --- Construction cost (build, throw away) ---
 (defn bench-build-byte-many [] (ignore (Parser.many (Parser.byte \a))))
 (defn bench-build-int-list []
   (ignore (Parser.sep-by (Parser.Lexer.integer) (Parser.byte \,))))
-
-; ============================================================
-; Main
-; ============================================================
 
 (defn main [] (do
     (setup-inputs)

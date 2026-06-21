@@ -22,7 +22,6 @@
 ; Whole config: pairs separated by ';' (with optional whitespace via lexeme).
 (defn config [] (Parser.sep-by1 (pair) (Parser.Lexer.symbol @";")))
 
-; Pretty-print one pair.
 (defn show-pair [p] (fmt "  %s -> %d" (Pair.a p) @(Pair.b p)))
 
 (defn run-on [input]
