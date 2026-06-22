@@ -172,6 +172,32 @@
     "string is atomic: alt picks second alternative even after partial match of first")
 
   (assert-true test
+    (ok? &(Parser.parse-partial (Parser.string @"") "anything"))
+    "string: empty pattern succeeds without consuming")
+
+  (assert-equal test
+    @""
+    (match (Parser.parse-partial (Parser.string @"") "anything")
+      (Result.Success v) v
+      _ @"FAIL")
+    "string: empty pattern returns empty slice")
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.string @"") ""))
+    "string: empty pattern on empty input succeeds")
+
+  (assert-true test
+    (ok? &(Parser.parse (Parser.string @"a\r\nb") "a\r\nb"))
+    "string: matches CRLF line endings")
+
+  (assert-equal test
+    @"a\r\nb"
+    (match (Parser.parse (Parser.string @"a\r\nb") "a\r\nb")
+      (Result.Success v) v
+      _ @"FAIL")
+    "string: CRLF returns matched slice")
+
+  (assert-true test
     (match (Parser.parse
         (Parser.label @"a digit"
                       (Parser.satisfy
