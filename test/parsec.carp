@@ -190,8 +190,8 @@
     "string: matches CRLF line endings")
 
   (assert-equal test
-    @"a\r\nb"
-    (match (Parser.parse (Parser.string @"a\r\nb") "a\r\nb")
+    "a\r\nb"
+    &(match (Parser.parse (Parser.string @"a\r\nb") "a\r\nb")
       (Result.Success v) v
       _ @"FAIL")
     "string: CRLF returns matched slice")
