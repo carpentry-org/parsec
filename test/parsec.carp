@@ -175,11 +175,10 @@
     (ok? &(Parser.parse-partial (Parser.string @"") "anything"))
     "string: empty pattern succeeds without consuming")
 
-  (assert-equal test
-    @""
+  (assert-true test
     (match (Parser.parse-partial (Parser.string @"") "anything")
-      (Result.Success v) v
-      _ @"FAIL")
+      (Result.Success p) (and (= "" (Pair.a &p)) (= "anything" (Pair.b &p)))
+      _ false)
     "string: empty pattern returns empty slice")
 
   (assert-true test
