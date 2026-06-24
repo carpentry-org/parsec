@@ -78,7 +78,7 @@
                 <div class="module-description">
                     <p>is a Parsec-style parser combinator library for Carp.</p>
 <h2>Installation</h2>
-<pre><code>(load &quot;git@github.com:carpentry-org/parsec@0.3.0&quot;)
+<pre><code>(load &quot;git@github.com:carpentry-org/parsec@0.4.0&quot;)
 </code></pre>
 <h2>Usage</h2>
 <pre><code>(let [p (Parser.seq (Parser.byte \h) (Parser.byte \i))]
@@ -174,6 +174,52 @@ to allow backtracking.</p>
                     </pre>
                     <p class="doc">
                         <p>consumes any byte; fails only at end of input.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#at-least">
+                        <h3 id="at-least">
+                            at-least
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [Int, (Parser a)] (Parser (Array a)))
+                    </p>
+                    <pre class="args">
+                        (at-least n p)
+                    </pre>
+                    <p class="doc">
+                        <p>runs <code>p</code> at least <code>n</code> times, then continues greedily
+like <code>many</code>. Fails if <code>p</code> doesn't match at least <code>n</code> times. After the
+minimum, stops on empty failure or empty success to avoid infinite
+recursion.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#at-most">
+                        <h3 id="at-most">
+                            at-most
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [Int, (Parser a)] (Parser (Array a)))
+                    </p>
+                    <pre class="args">
+                        (at-most n p)
+                    </pre>
+                    <p class="doc">
+                        <p>runs <code>p</code> up to <code>n</code> times, collecting results into an
+<code>Array</code>. Stops early if <code>p</code> fails empty or succeeds without consuming
+(same guard as <code>many</code>). Consumed failures propagate. Use <code>count</code> for
+exactly <code>n</code> repetitions that may succeed empty.</p>
 
                     </p>
                 </div>
@@ -772,6 +818,29 @@ fails if <code>p</code> succeeds. Useful for negative assertions.</p>
                     </p>
                 </div>
                 <div class="binder">
+                    <a class="anchor" href="#option">
+                        <h3 id="option">
+                            option
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [a, (Parser a)] (Parser a))
+                    </p>
+                    <pre class="args">
+                        (option default p)
+                    </pre>
+                    <p class="doc">
+                        <p>tries <code>p</code>; on empty failure, returns <code>default</code> without
+consuming. On consumed failure, propagates. On success, returns
+<code>p</code>'s value. Like <code>optional</code> but yields a concrete default instead
+of <code>Maybe</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
                     <a class="anchor" href="#optional">
                         <h3 id="optional">
                             optional
@@ -900,6 +969,30 @@ the real parser before parsing. Companion to <code>recurse</code>.</p>
                     </p>
                 </div>
                 <div class="binder">
+                    <a class="anchor" href="#range">
+                        <h3 id="range">
+                            range
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [Int, Int, (Parser a)] (Parser (Array a)))
+                    </p>
+                    <pre class="args">
+                        (range lo hi p)
+                    </pre>
+                    <p class="doc">
+                        <p>runs <code>p</code> between <code>lo</code> and <code>hi</code> times (inclusive),
+collecting results into an <code>Array</code>. The first <code>lo</code> applications are
+mandatory; after that, <code>p</code> is applied greedily up to <code>hi</code> times
+total, stopping on empty failure or empty success (same guard as
+<code>many</code>).</p>
+
+                    </p>
+                </div>
+                <div class="binder">
                     <a class="anchor" href="#recurse">
                         <h3 id="recurse">
                             recurse
@@ -1019,6 +1112,50 @@ is not allowed (<code>sep</code> must be followed by another <code>p</code>). Re
                     </p>
                 </div>
                 <div class="binder">
+                    <a class="anchor" href="#sep-end-by">
+                        <h3 id="sep-end-by">
+                            sep-end-by
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Parser a), (Parser b)] (Parser (Array a)))
+                    </p>
+                    <pre class="args">
+                        (sep-end-by p sep)
+                    </pre>
+                    <p class="doc">
+                        <p>zero or more <code>p</code> separated by <code>sep</code>, with an
+optional trailing <code>sep</code>. Returns an <code>Array</code> (possibly empty). Like
+<code>sep-by</code> but allows the final element to be followed by <code>sep</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#sep-end-by1">
+                        <h3 id="sep-end-by1">
+                            sep-end-by1
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Parser a), (Parser b)] (Parser (Array a)))
+                    </p>
+                    <pre class="args">
+                        (sep-end-by1 p sep)
+                    </pre>
+                    <p class="doc">
+                        <p>one or more <code>p</code> separated by <code>sep</code>, with an
+optional trailing <code>sep</code>. Returns an <code>Array</code> of <code>p</code> values. Like
+<code>sep-by1</code> but allows the final element to be followed by <code>sep</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
                     <a class="anchor" href="#seq">
                         <h3 id="seq">
                             seq
@@ -1076,6 +1213,27 @@ Failure of either propagates with appropriate consumption tracking.</p>
                     </span>
                     <p class="doc">
                         <p>sets the <code>run</code> property of a <code>Parser</code> in place.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#skip">
+                        <h3 id="skip">
+                            skip
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Parser a)] (Parser ()))
+                    </p>
+                    <pre class="args">
+                        (skip p)
+                    </pre>
+                    <p class="doc">
+                        <p>runs <code>p</code> and discards its value, returning <code>()</code>.
+Useful for running a parser purely for its consumption effect.</p>
 
                     </p>
                 </div>
@@ -1183,6 +1341,28 @@ propagates as-is.</p>
                         <p>matches the literal string <code>s</code> byte-for-byte.
 Atomic: on partial mismatch, fails empty (no consumed failure
 mid-string).</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#string-ci">
+                        <h3 id="string-ci">
+                            string-ci
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [String] (Parser String))
+                    </p>
+                    <pre class="args">
+                        (string-ci s)
+                    </pre>
+                    <p class="doc">
+                        <p>matches the literal string <code>s</code> case-insensitively
+(ASCII only). Returns the matched slice from the input, preserving
+its original case. Atomic: on partial mismatch, fails empty.</p>
 
                     </p>
                 </div>
