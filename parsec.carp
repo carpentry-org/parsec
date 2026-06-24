@@ -1,4 +1,5 @@
 (load "git@github.com:carpentry-org/strbuf@0.1.0")
+(relative-include "src/parsec_ffi.h")
 
 (doc Parser "is a Parsec-style parser combinator library for Carp.
 
@@ -48,7 +49,21 @@ instead. Used by UTF-8 codepoint parsers.")
       (Cursor.init (Int.+ @(Cursor.pos cur) n) (Int.inc @(Cursor.line cur)) 1)
       (Cursor.init (Int.+ @(Cursor.pos cur) n)
                    @(Cursor.line cur)
-                   (Int.inc @(Cursor.col cur))))))
+                   (Int.inc @(Cursor.col cur)))))
+
+  (hidden advance-string)
+  (doc advance-string "advances the cursor past `slen` bytes of `src`
+starting at `pos`, counting newlines in a single pass instead of
+allocating an intermediate `Cursor` per byte.")
+  (defn advance-string [cur src pos slen]
+    (let-do [new-line @(Cursor.line cur)
+             new-col @(Cursor.col cur)
+             end (Int.+ pos slen)]
+      (for [i pos end]
+        (if (Char.= (String.char-at src i) \newline)
+          (do (set! new-line (Int.inc new-line)) (set! new-col 1))
+          (set! new-col (Int.inc new-col))))
+      (Cursor.init (Int.+ @(Cursor.pos cur) slen) new-line new-col))))
 
 (doc Expected "is the set of labels carried by a `ParseErr`. The
 common case (a single failing primitive) uses `One` to skip a
@@ -420,11 +435,14 @@ the real parser before parsing. Companion to `recurse`.")
                              @(ParseErr.unexpected &e)
                              (Expected.One @&name)))))))
 
+  (private substr-eq?)
+  (hidden substr-eq?)
+  (register substr-eq? (Fn [(Ref String) Int (Ref String) Int] Bool))
+
   (private string-match)
   (hidden string-match)
-  (doc string-match "shared helper for `string` and `string-ci`. Matches the
-literal `s` against the input using `cmp` to compare each character pair.
-Returns the matched input slice on success.")
+  (doc string-match "per-character string match using `cmp`. Used by
+`string-ci` where case folding prevents a bulk `memcmp`.")
   (defn string-match [s lbl cmp]
     (let [slen (String.length &s)]
       (Parser.init
@@ -439,11 +457,7 @@ Returns the matched input slice on success.")
                     (set! matches false)
                     (break)))
                 (if matches
-                  (let-do [c @cur]
-                    (for [i 0 slen]
-                      (set! c
-                            (Cursor.advance &c
-                                            (String.char-at src (Int.+ pos i)))))
+                  (let [c (Cursor.advance-string cur src pos slen)]
                     (if (Int.> slen 0)
                       (Reply.OkConsumed
                         (String.byte-slice src pos (Int.+ pos slen))
@@ -455,8 +469,26 @@ Returns the matched input slice on success.")
 
   (doc string "matches the literal string `s` byte-for-byte.
 Atomic: on partial mismatch, fails empty (no consumed failure
-mid-string).")
-  (defn string [s] (let [lbl (fmt "\"%s\"" &s)] (string-match s lbl Char.=)))
+mid-string). Uses C `memcmp` for the comparison and advances the
+cursor in a single pass.")
+  (defn string [s]
+    (let [slen (String.length &s)
+          lbl (fmt "\"%s\"" &s)]
+      (Parser.init
+        (fn [src len cur]
+          (let [pos @(Cursor.pos cur)]
+            (if (Int.> (Int.+ pos slen) len)
+              (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))
+              (if (substr-eq? src pos &s slen)
+                (let [c (Cursor.advance-string cur src pos slen)]
+                  (if (Int.> slen 0)
+                    (Reply.OkConsumed
+                      (String.byte-slice src pos (Int.+ pos slen))
+                      c)
+                    (Reply.OkEmpty
+                      (String.byte-slice src pos (Int.+ pos slen))
+                      c)))
+                (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl)))))))))
 
   (doc optional "if `p` succeeds, wraps the value in `Just`; if `p`
 fails empty, succeeds with `Nothing` without consuming. Consumed

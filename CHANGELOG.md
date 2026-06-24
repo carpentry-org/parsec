@@ -62,6 +62,11 @@ the project follows [Semantic Versioning](https://semver.org/).
   parsers that match a single ASCII byte. These were previously
   private predicates only; now exposed as public combinators.
 
+### Changed
+- `Parser.string` now uses C `memcmp` for comparison and advances the
+  cursor in a single pass, avoiding per-character `Cursor` allocation.
+  `Parser.string-ci` also benefits from the single-pass cursor advance.
+
 ### Fixed
 - `Lexer.unsigned-int` and `Lexer.integer` now return a parse
   error when the digit string overflows `Int` instead of silently
