@@ -80,6 +80,11 @@ the project follows [Semantic Versioning](https://semver.org/).
   sign, integer/fractional digits, optional exponent) and returns
   a `Double`.
 
+### Changed
+- `Parser.string` now uses C `memcmp` for comparison and advances the
+  cursor in a single pass, avoiding per-character `Cursor` allocation.
+  `Parser.string-ci` also benefits from the single-pass cursor advance.
+
 ### Fixed
 - `Parser.satisfy` now populates `ParseErr.unexpected` with the
   actual byte seen when the predicate fails, so error messages
