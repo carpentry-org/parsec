@@ -477,9 +477,10 @@ cursor in a single pass.")
       (Parser.init
         (fn [src len cur]
           (let [pos @(Cursor.pos cur)]
-            (if (Int.> (Int.+ pos slen) len)
-              (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))
-              (if (substr-eq? src pos &s slen)
+            (cond
+              (Int.> (Int.+ pos slen) len)
+                (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))
+              (substr-eq? src pos &s slen)
                 (let [c (Cursor.advance-string cur src pos slen)]
                   (if (Int.> slen 0)
                     (Reply.OkConsumed
@@ -488,7 +489,7 @@ cursor in a single pass.")
                     (Reply.OkEmpty
                       (String.byte-slice src pos (Int.+ pos slen))
                       c)))
-                (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl)))))))))
+              (Reply.ErrEmpty (ParseErr.expected-at cur @&lbl))))))))
 
   (doc optional "if `p` succeeds, wraps the value in `Just`; if `p`
 fails empty, succeeds with `Nothing` without consuming. Consumed
