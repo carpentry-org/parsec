@@ -32,14 +32,11 @@ reporting.")
   (defn zero [] (Cursor.init 0 1 1))
 
   (doc advance "advances the cursor past one byte. If the byte is a
-newline, `line` increments and `col` resets to 1. Printable ASCII
-bytes (>= space) take a fast path that skips the newline check.")
+newline, `line` increments and `col` resets to 1.")
   (defn advance [cur b]
     (let [pos (Int.inc @(Cursor.pos cur))]
-      (cond
-        (Char.>= b \space)
-          (Cursor.init pos @(Cursor.line cur) (Int.inc @(Cursor.col cur)))
-        (Char.= b \newline) (Cursor.init pos (Int.inc @(Cursor.line cur)) 1)
+      (if (Char.= b \newline)
+        (Cursor.init pos (Int.inc @(Cursor.line cur)) 1)
         (Cursor.init pos @(Cursor.line cur) (Int.inc @(Cursor.col cur))))))
 
   (hidden advance-by)

@@ -8,8 +8,6 @@ the project follows [Semantic Versioning](https://semver.org/).
 ### Changed
 - `Parser.string-ci` — fused the comparison and cursor-advance loops
   into a single pass, halving byte reads on successful matches.
-- `Cursor.advance` — printable ASCII bytes (>= space) now take a fast
-  path that skips the newline check.
 
 ## [0.4.0]
 
