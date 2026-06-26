@@ -5,6 +5,10 @@ the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- `Parser.string-ci` — fused the comparison and cursor-advance loops
+  into a single pass, halving byte reads on successful matches.
+
 ## [0.4.0]
 
 ### Added
