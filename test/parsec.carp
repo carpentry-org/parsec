@@ -1737,4 +1737,120 @@ line2 */"))
 
   (assert-true test
     (err? &(Parser.parse (Parser.Lexer.binary-int) "0"))
-    "binary-int: bare '0' too short for prefix"))
+    "binary-int: bare '0' too short for prefix")
+
+  ; --- string-literal ---
+
+  (assert-equal test
+    "hello"
+    &(match (Parser.parse (Parser.Lexer.string-literal) "\"hello\"")
+      (Result.Success s) s
+      (Result.Error _) @"<err>")
+    "string-literal: basic double-quoted text")
+
+  (assert-equal test
+    ""
+    &(match (Parser.parse (Parser.Lexer.string-literal) "\"\"")
+      (Result.Success s) s
+      (Result.Error _) @"<err>")
+    "string-literal: empty string")
+
+  (assert-equal test
+    "a\"b"
+    &(match (Parser.parse (Parser.Lexer.string-literal) "\"a\\\"b\"")
+      (Result.Success s) s
+      (Result.Error _) @"<err>")
+    "string-literal: escaped double quote")
+
+  (assert-equal test
+    "a\nb"
+    &(match (Parser.parse (Parser.Lexer.string-literal) "\"a\\nb\"")
+      (Result.Success s) s
+      (Result.Error _) @"<err>")
+    "string-literal: newline escape")
+
+  (assert-equal test
+    "\t\r\\"
+    &(match (Parser.parse (Parser.Lexer.string-literal) "\"\\t\\r\\\\\"")
+      (Result.Success s) s
+      (Result.Error _) @"<err>")
+    "string-literal: tab, carriage-return and backslash escapes")
+
+  (assert-equal test
+    "A~"
+    &(match (Parser.parse (Parser.Lexer.string-literal) "\"\\x41\\x7e\"")
+      (Result.Success s) s
+      (Result.Error _) @"<err>")
+    "string-literal: \\xHH hex escapes")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.string-literal) "\"unterminated"))
+    "string-literal: unterminated string fails")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.string-literal) "\"bad\\q\""))
+    "string-literal: unrecognized escape fails")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.string-literal) "nostart"))
+    "string-literal: missing opening quote fails empty")
+
+  (assert-true test
+    (match (Parser.parse-partial (Parser.Lexer.string-literal) "\"ab\"cd")
+      (Result.Success p) (and (= "ab" (Pair.a &p)) (= "cd" (Pair.b &p)))
+      _ false)
+    "string-literal: parse-partial leaves trailing input")
+
+  (assert-equal test
+    "hi"
+    &(match (Parser.parse (Parser.Lexer.lexeme (Parser.Lexer.string-literal))
+                          "\"hi\"   ")
+      (Result.Success s) s
+      (Result.Error _) @"<err>")
+    "string-literal: composes with lexeme, skipping trailing whitespace")
+
+  ; --- char-literal ---
+
+  (assert-equal test
+    97
+    (match (Parser.parse (Parser.Lexer.char-literal) "'a'")
+      (Result.Success v) (Char.to-int v)
+      (Result.Error _) -1)
+    "char-literal: basic single character")
+
+  (assert-equal test
+    10
+    (match (Parser.parse (Parser.Lexer.char-literal) "'\\n'")
+      (Result.Success v) (Char.to-int v)
+      (Result.Error _) -1)
+    "char-literal: newline escape")
+
+  (assert-equal test
+    39
+    (match (Parser.parse (Parser.Lexer.char-literal) "'\\''")
+      (Result.Success v) (Char.to-int v)
+      (Result.Error _) -1)
+    "char-literal: escaped single quote")
+
+  (assert-equal test
+    65
+    (match (Parser.parse (Parser.Lexer.char-literal) "'\\x41'")
+      (Result.Success v) (Char.to-int v)
+      (Result.Error _) -1)
+    "char-literal: \\xHH hex escape")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.char-literal) "''"))
+    "char-literal: empty literal fails")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.char-literal) "'ab'"))
+    "char-literal: multi-character literal fails")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.char-literal) "'a"))
+    "char-literal: unterminated literal fails")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.char-literal) "x"))
+    "char-literal: missing opening quote fails empty"))
