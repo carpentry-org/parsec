@@ -5,6 +5,13 @@ the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `Parser.Lexer.string-literal` — parses a double-quoted string literal,
+  decoding backslash escapes (`\n`, `\t`, `\r`, `\\`, `\"`, `\'`, `\0`,
+  `\a`, `\b`, `\f`, `\v`, and `\xHH`), and returns the decoded text.
+- `Parser.Lexer.char-literal` — parses a single-quoted character literal
+  with the same escape set and returns the decoded `Char`.
+
 ### Changed
 - `Parser.string-ci` — fused the comparison and cursor-advance loops
   into a single pass, halving byte reads on successful matches.

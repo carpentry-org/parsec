@@ -1834,3 +1834,148 @@ prefix followed by one or more binary digits (`0` or `1`). Returns an
                             -1))
                         @"binary integer"
                         @"binary digit"))))
+
+(defmodule Parser
+  (defmodule Lexer
+    (private hex-digit-val)
+    (hidden hex-digit-val)
+    (defn hex-digit-val [ch]
+      (cond
+        (and (Char.>= ch \0) (Char.<= ch \9))
+          (Int.- (Char.to-int ch) (Char.to-int \0))
+        (and (Char.>= ch \a) (Char.<= ch \f))
+          (Int.+ 10 (Int.- (Char.to-int ch) (Char.to-int \a)))
+        (and (Char.>= ch \A) (Char.<= ch \F))
+          (Int.+ 10 (Int.- (Char.to-int ch) (Char.to-int \A)))
+        -1))
+
+    (private decode-hex-escape)
+    (hidden decode-hex-escape)
+    (defn decode-hex-escape [src len c]
+      (let [pos @(Cursor.pos c)]
+        (if (Int.> (Int.+ pos 2) len)
+          (Maybe.Nothing)
+          (let [d1 (String.char-at src pos)
+                d2 (String.char-at src (Int.inc pos))
+                h1 (hex-digit-val d1)
+                h2 (hex-digit-val d2)]
+            (if (or (Int.< h1 0) (Int.< h2 0))
+              (Maybe.Nothing)
+              (Maybe.Just
+                (Pair.init (Char.from-int (Int.+ (Int.* h1 16) h2))
+                           (Cursor.advance &(Cursor.advance c d1) d2))))))))
+
+    (private decode-escape)
+    (hidden decode-escape)
+    (defn decode-escape [src len c]
+      (if (Int.>= @(Cursor.pos c) len)
+        (Maybe.Nothing)
+        (let [e (String.char-at src @(Cursor.pos c))
+              c2 (Cursor.advance c e)]
+          (cond
+            (Char.= e \n) (Maybe.Just (Pair.init \newline c2))
+            (Char.= e \t) (Maybe.Just (Pair.init \tab c2))
+            (Char.= e \r) (Maybe.Just (Pair.init \return c2))
+            (Char.= e \\) (Maybe.Just (Pair.init \\ c2))
+            (Char.= e \") (Maybe.Just (Pair.init \" c2))
+            (Char.= e \') (Maybe.Just (Pair.init \' c2))
+            (Char.= e \0) (Maybe.Just (Pair.init (Char.from-int 0) c2))
+            (Char.= e \a) (Maybe.Just (Pair.init (Char.from-int 7) c2))
+            (Char.= e \b) (Maybe.Just (Pair.init (Char.from-int 8) c2))
+            (Char.= e \f) (Maybe.Just (Pair.init (Char.from-int 12) c2))
+            (Char.= e \v) (Maybe.Just (Pair.init (Char.from-int 11) c2))
+            (Char.= e \x) (decode-hex-escape src len &c2)
+            (Maybe.Nothing)))))
+
+    (doc string-literal "parses a double-quoted string literal, decoding
+backslash escapes, and returns the decoded text. Recognizes `\\n`,
+`\\t`, `\\r`, `\\\\`, `\\\"`, `\\'`, `\\0`, `\\a`, `\\b`, `\\f`, `\\v`,
+and `\\xHH` (two hex digits). Fails (consumed) on an unterminated
+string or an unrecognized escape. The result is a byte-level string, so
+a `\\0` or `\\x00` escape embeds a NUL and truncates it like any Carp
+string.")
+    (defn string-literal []
+      (Parser.init
+        (fn [src len cur]
+          (let [pos @(Cursor.pos cur)]
+            (if (or (Int.>= pos len) (not (Char.= (String.char-at src pos) \")))
+              (Reply.ErrEmpty (ParseErr.expected-at cur @"string literal"))
+              (let-do [sb (StringBuf.create)
+                       c (Cursor.advance cur \")
+                       going true
+                       result (the (Reply String)
+                                   (Reply.ErrEmpty (ParseErr.empty-at cur)))]
+                (while-do going
+                  (let [p @(Cursor.pos &c)]
+                    (if (Int.>= p len)
+                      (do
+                        (set! result
+                              (Reply.ErrConsumed
+                                (ParseErr.expected-at &c @"closing quote")))
+                        (set! going false))
+                      (let [ch (String.char-at src p)]
+                        (cond
+                          (Char.= ch \")
+                            (do
+                              (set! result
+                                    (Reply.OkConsumed (StringBuf.to-string &sb)
+                                                      (Cursor.advance &c \")))
+                              (set! going false))
+                          (Char.= ch \\)
+                            (match (decode-escape src
+                                                  len
+                                                  &(Cursor.advance &c \\))
+                              (Maybe.Just pair)
+                                (do
+                                  (StringBuf.append-char &sb @(Pair.a &pair))
+                                  (set! c @(Pair.b &pair)))
+                              (Maybe.Nothing)
+                                (do
+                                  (set! result
+                                        (Reply.ErrConsumed
+                                          (ParseErr.expected-at &c
+                                                                @"valid escape sequence")))
+                                  (set! going false)))
+                          (do
+                            (StringBuf.append-char &sb ch)
+                            (set! c (Cursor.advance &c ch))))))))
+                (StringBuf.delete sb)
+                result))))))
+
+    (private finish-char-literal)
+    (hidden finish-char-literal)
+    (defn finish-char-literal [src len c ch]
+      (if (or (Int.>= @(Cursor.pos c) len)
+              (not (Char.= (String.char-at src @(Cursor.pos c)) \')))
+        (Reply.ErrConsumed (ParseErr.expected-at c @"closing quote"))
+        (Reply.OkConsumed ch (Cursor.advance c \'))))
+
+    (doc char-literal "parses a single-quoted character literal, decoding
+the same backslash escapes as `string-literal`, and returns the decoded
+byte as a `Char`. Fails (consumed) on an empty literal (`''`), a missing
+closing quote, an unterminated literal, or an unrecognized escape.")
+    (defn char-literal []
+      (Parser.init
+        (fn [src len cur]
+          (let [pos @(Cursor.pos cur)]
+            (if (or (Int.>= pos len) (not (Char.= (String.char-at src pos) \')))
+              (Reply.ErrEmpty (ParseErr.expected-at cur @"character literal"))
+              (let [c1 (Cursor.advance cur \')]
+                (if (Int.>= @(Cursor.pos &c1) len)
+                  (Reply.ErrConsumed (ParseErr.expected-at &c1 @"character"))
+                  (let [b (String.char-at src @(Cursor.pos &c1))]
+                    (cond
+                      (Char.= b \')
+                        (Reply.ErrConsumed (ParseErr.expected-at &c1
+                                                                 @"character"))
+                      (Char.= b \\)
+                        (match (decode-escape src len &(Cursor.advance &c1 \\))
+                          (Maybe.Just pair)
+                            (finish-char-literal src
+                                                 len
+                                                 (Pair.b &pair)
+                                                 @(Pair.a &pair))
+                          (Maybe.Nothing)
+                            (Reply.ErrConsumed
+                              (ParseErr.expected-at &c1 @"valid escape sequence")))
+                      (finish-char-literal src len &(Cursor.advance &c1 b) b))))))))))))
