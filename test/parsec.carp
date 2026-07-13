@@ -278,6 +278,57 @@
       _ false)
     "many1 collects when at least one match")
 
+  ; The repetition combinators must keep the consumed bit when the
+  ; underlying parser fails after consuming input, so that `alt` does
+  ; not backtrack past a partial match. `(then (byte a) (byte b))` on
+  ; "ac" consumes the 'a' and then fails: a consumed failure. The
+  ; right branch would consume the whole input if it were tried, so
+  ; the parse succeeds iff `alt` (wrongly) backtracks.
+  (assert-true test
+    (err?
+      &(Parser.parse
+        (Parser.alt
+          (Parser.count 2 (Parser.then (Parser.byte \a) (Parser.byte \b)))
+          (Parser.many1 (Parser.any-byte)))
+        "ac"))
+    "count: a consumed failure is not backtrackable in alt")
+
+  (assert-true test
+    (err?
+      &(Parser.parse
+        (Parser.alt
+          (Parser.many1 (Parser.then (Parser.byte \a) (Parser.byte \b)))
+          (Parser.many1 (Parser.any-byte)))
+        "ac"))
+    "many1: a consumed failure is not backtrackable in alt")
+
+  (assert-true test
+    (err?
+      &(Parser.parse
+        (Parser.alt
+          (Parser.at-least 2 (Parser.then (Parser.byte \a) (Parser.byte \b)))
+          (Parser.many1 (Parser.any-byte)))
+        "ac"))
+    "at-least: a consumed failure in the mandatory phase is not backtrackable")
+
+  (assert-true test
+    (err?
+      &(Parser.parse
+        (Parser.alt
+          (Parser.range 2 4 (Parser.then (Parser.byte \a) (Parser.byte \b)))
+          (Parser.many1 (Parser.any-byte)))
+        "ac"))
+    "range: a consumed failure in the mandatory phase is not backtrackable")
+
+  ; A purely empty failure (nothing consumed) must still backtrack.
+  (assert-true test
+    (ok?
+      &(Parser.parse
+        (Parser.alt (Parser.count 2 (Parser.byte \a))
+                    (Parser.count 1 (Parser.byte \b)))
+        "b"))
+    "count: an empty failure still backtracks in alt")
+
   (assert-true test
     (ok?
       &(Parser.parse
