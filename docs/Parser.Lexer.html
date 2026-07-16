@@ -148,6 +148,29 @@ before the comment closes. Returns unit.</p>
                     </p>
                 </div>
                 <div class="binder">
+                    <a class="anchor" href="#char-literal">
+                        <h3 id="char-literal">
+                            char-literal
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [] (Parser Char))
+                    </p>
+                    <pre class="args">
+                        (char-literal)
+                    </pre>
+                    <p class="doc">
+                        <p>parses a single-quoted character literal, decoding
+the same backslash escapes as <code>string-literal</code>, and returns the decoded
+byte as a <code>Char</code>. Fails (consumed) on an empty literal (<code>''</code>), a missing
+closing quote, an unterminated literal, or an unrecognized escape.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
                     <a class="anchor" href="#digit">
                         <h3 id="digit">
                             digit
@@ -380,6 +403,32 @@ prefix followed by one or more octal digits (<code>0</code>-<code>7</code>). Ret
                     <p class="doc">
                         <p>matches one ASCII whitespace byte (space, tab, CR,
 LF). Returns the byte.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#string-literal">
+                        <h3 id="string-literal">
+                            string-literal
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [] (Parser String))
+                    </p>
+                    <pre class="args">
+                        (string-literal)
+                    </pre>
+                    <p class="doc">
+                        <p>parses a double-quoted string literal, decoding
+backslash escapes, and returns the decoded text. Recognizes <code>\n</code>,
+<code>\t</code>, <code>\r</code>, <code>\\</code>, <code>\&quot;</code>, <code>\'</code>, <code>\0</code>, <code>\a</code>, <code>\b</code>, <code>\f</code>, <code>\v</code>,
+and <code>\xHH</code> (two hex digits). Fails (consumed) on an unterminated
+string or an unrecognized escape. The result is a byte-level string, so
+a <code>\0</code> or <code>\x00</code> escape embeds a NUL and truncates it like any Carp
+string.</p>
 
                     </p>
                 </div>

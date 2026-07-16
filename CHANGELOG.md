@@ -3,7 +3,7 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 the project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.5.0]
 
 ### Added
 - `Parser.Lexer.string-literal` — parses a double-quoted string literal,
