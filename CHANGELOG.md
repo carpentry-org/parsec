@@ -3,6 +3,15 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 the project follows [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Fixed
+- `Parser.UTF8` codepoint parsers (`any-char`, `char`, `codepoint-satisfy`)
+  now reject malformed UTF-8 — invalid continuation bytes, overlong
+  encodings, UTF-16 surrogates, and codepoints above U+10FFFF — instead of
+  silently mis-decoding them and, on a bad continuation byte, swallowing the
+  following byte.
+
 ## [0.5.0]
 
 ### Added
