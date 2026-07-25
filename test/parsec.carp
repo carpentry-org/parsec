@@ -97,6 +97,21 @@
     (Parser.Lexer.lexeme (Parser.Lexer.integer))
     (sym-to @"==" (fn [_] ieq))))
 
+; `option` can succeed without consuming; `sym-to` and `integer` never do
+(defn neg-opt-int []
+  (Parser.prefixed (sym-to @"-" (fn [_] Int.neg))
+                   (Parser.option 0 (Parser.Lexer.lexeme (Parser.Lexer.integer)))))
+
+(defn fact-opt-int []
+  (Parser.postfixed
+    (Parser.option (fn [n] n) (sym-to @"!" (fn [_] ifact)))
+    (Parser.Lexer.lexeme (Parser.Lexer.integer))))
+
+(defn eq-opt-infix []
+  (Parser.infix-n
+    (Parser.option 0 (Parser.Lexer.lexeme (Parser.Lexer.integer)))
+    (sym-to @"==" (fn [_] ieq))))
+
 (defn alt-99 [p s]
   (Parser.alt p (Parser.map (Parser.Lexer.symbol s) (fn [_] 99))))
 
@@ -2003,6 +2018,18 @@ line2 */"))
   (assert-true test
     (err? &(Parser.parse (alt-99 (before-missing-suffix (eq-infix)) @"7") "7"))
     "infix-n: consumed operand and no operator succeeds consumed, so alt cannot backtrack")
+
+  (assert-true test
+    (err? &(Parser.parse (alt-99 (before-missing-suffix (neg-opt-int)) @"-") "-"))
+    "prefixed: consumed prefix then an empty-succeeding operand succeeds consumed, so alt cannot backtrack")
+
+  (assert-true test
+    (err? &(Parser.parse (alt-99 (before-missing-suffix (fact-opt-int)) @"3") "3"))
+    "postfixed: consumed operand then an empty-succeeding postfix succeeds consumed, so alt cannot backtrack")
+
+  (assert-true test
+    (err? &(Parser.parse (alt-99 (before-missing-suffix (eq-opt-infix)) @"1==") "1=="))
+    "infix-n: consumed operator then an empty-succeeding operand succeeds consumed, so alt cannot backtrack")
 
   (assert-equal test
     "parse error at 1:1; expected: \"-\", integer"
