@@ -82,6 +82,26 @@
 
 (defn arith-val [s] (match (arith s) (Result.Success n) n (Result.Error _) -999))
 
+; `alt` is the only observer of consumed/empty bookkeeping: it backtracks into
+; its right branch exactly when the left branch failed without consuming.
+(defn neg-int []
+  (Parser.prefixed (sym-to @"-" (fn [_] Int.neg))
+                   (Parser.Lexer.lexeme (Parser.Lexer.integer))))
+
+(defn fact-int []
+  (Parser.postfixed (sym-to @"!" (fn [_] ifact))
+                    (Parser.Lexer.lexeme (Parser.Lexer.integer))))
+
+(defn eq-infix []
+  (Parser.infix-n
+    (Parser.Lexer.lexeme (Parser.Lexer.integer))
+    (sym-to @"==" (fn [_] ieq))))
+
+(defn alt-99 [p s]
+  (Parser.alt p (Parser.map (Parser.Lexer.symbol s) (fn [_] 99))))
+
+(defn before-missing-suffix [p] (Parser.before p (Parser.Lexer.symbol @"?")))
+
 (deftest test
   (assert-equal test
     42
@@ -1963,6 +1983,33 @@ line2 */"))
   (assert-true test
     (err? &(arith "1 =="))
     "infix-n: operator without a right operand fails")
+
+  (assert-true test
+    (err? &(Parser.parse (alt-99 (neg-int) @"-x") "-x"))
+    "prefixed: consumed prefix then an empty-failing operand fails consumed, so alt cannot backtrack")
+
+  (assert-true test
+    (ok? &(Parser.parse (alt-99 (neg-int) @"x") "x"))
+    "prefixed: absent prefix and an empty-failing operand fails empty, so alt backtracks")
+
+  (assert-true test
+    (err? &(Parser.parse (alt-99 (before-missing-suffix (fact-int)) @"3") "3"))
+    "postfixed: consumed operand and no postfix succeeds consumed, so alt cannot backtrack")
+
+  (assert-true test
+    (err? &(Parser.parse (alt-99 (eq-infix) @"1==") "1=="))
+    "infix-n: consumed operator then an empty-failing operand fails consumed, so alt cannot backtrack")
+
+  (assert-true test
+    (err? &(Parser.parse (alt-99 (before-missing-suffix (eq-infix)) @"7") "7"))
+    "infix-n: consumed operand and no operator succeeds consumed, so alt cannot backtrack")
+
+  (assert-equal test
+    "parse error at 1:1; expected: \"-\", integer"
+    &(match (Parser.parse (neg-int) "x")
+      (Result.Error e) (Parser.format-error &e)
+      _ @"FAIL")
+    "prefixed: an empty-failing prefix keeps its label in the operand's expected set")
 
   (assert-true test
     (err? &(Parser.parse (Parser.Lexer.char-literal) "x"))

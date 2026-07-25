@@ -1989,7 +1989,12 @@ the operator's function to `p`'s value. Without a prefix, behaves like
       (fn [src len cur]
         (match (~(Parser.run &op) src len cur)
           (Reply.ErrConsumed e) (Reply.ErrConsumed e)
-          (Reply.ErrEmpty _) (~(Parser.run &p) src len cur)
+          (Reply.ErrEmpty e1)
+            (match (~(Parser.run &p) src len cur)
+              (Reply.OkConsumed v c) (Reply.OkConsumed v c)
+              (Reply.OkEmpty v c) (Reply.OkEmpty v c)
+              (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+              (Reply.ErrEmpty e2) (Reply.ErrEmpty (ParseErr.merge e1 e2)))
           (Reply.OkConsumed f c)
             (match (~(Parser.run &p) src len &c)
               (Reply.OkConsumed v c2) (Reply.OkConsumed (f v) c2)
