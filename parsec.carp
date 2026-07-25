@@ -1,4 +1,5 @@
 (load "git@github.com:carpentry-org/strbuf@0.1.0")
+(load "git@github.com:carpentry-org/utf8.carp@0.2.0")
 (relative-include "src/parsec_ffi.h")
 
 (doc Parser "is a Parsec-style parser combinator library for Carp.
@@ -1238,60 +1239,25 @@ width (1-4) of the codepoint, or `Nothing` on EOF or malformed input.")
     (defn byte-at [src pos]
       (Int.bit-and 255 (Char.to-int (String.char-at src pos))))
 
+    (private decode-multi)
+    (hidden decode-multi)
+    (defn decode-multi [src len pos]
+      (let [window (Array.repeat-indexed (Int.min 4 (Int.- len pos))
+                                         (fn [i]
+                                           (Byte.from-int (byte-at src
+                                                                   (Int.+ pos i)))))]
+        (match (UTF8.decode-at &window 0)
+          (Maybe.Nothing) (Maybe.Nothing)
+          (Maybe.Just p)
+            (Maybe.Just (Pair.init (Char.from-int @(Pair.a &p)) @(Pair.b &p))))))
+
     (defn decode [src len pos]
       (if (Int.>= pos len)
         (Maybe.Nothing)
         (let [b0 (byte-at src pos)]
-          (cond
-            (Int.< b0 128) (Maybe.Just (Pair.init (Char.from-int b0) 1))
-            (Int.< b0 192) (Maybe.Nothing)
-            (Int.< b0 224)
-              (if (Int.>= (Int.+ pos 1) len)
-                (Maybe.Nothing)
-                (let [b1 (byte-at src (Int.+ pos 1))
-                      cp (Int.bit-or
-                        (Int.bit-shift-left (Int.bit-and b0 31) 6)
-                        (Int.bit-and b1 63))]
-                  (if (or (Int./= 128 (Int.bit-and b1 192)) (Int.< cp 128))
-                    (Maybe.Nothing)
-                    (Maybe.Just (Pair.init (Char.from-int cp) 2)))))
-            (Int.< b0 240)
-              (if (Int.>= (Int.+ pos 2) len)
-                (Maybe.Nothing)
-                (let [b1 (byte-at src (Int.+ pos 1))
-                      b2 (byte-at src (Int.+ pos 2))
-                      cp (Int.bit-or
-                        (Int.bit-or
-                          (Int.bit-shift-left (Int.bit-and b0 15) 12)
-                          (Int.bit-shift-left (Int.bit-and b1 63) 6))
-                        (Int.bit-and b2 63))]
-                  (if (or (Int./= 128 (Int.bit-and b1 192))
-                          (Int./= 128 (Int.bit-and b2 192))
-                          (Int.< cp 2048)
-                          (and (Int.>= cp 55296) (Int.<= cp 57343)))
-                    (Maybe.Nothing)
-                    (Maybe.Just (Pair.init (Char.from-int cp) 3)))))
-            (Int.< b0 248)
-              (if (Int.>= (Int.+ pos 3) len)
-                (Maybe.Nothing)
-                (let [b1 (byte-at src (Int.+ pos 1))
-                      b2 (byte-at src (Int.+ pos 2))
-                      b3 (byte-at src (Int.+ pos 3))
-                      cp (Int.bit-or
-                        (Int.bit-or
-                          (Int.bit-or
-                            (Int.bit-shift-left (Int.bit-and b0 7) 18)
-                            (Int.bit-shift-left (Int.bit-and b1 63) 12))
-                          (Int.bit-shift-left (Int.bit-and b2 63) 6))
-                        (Int.bit-and b3 63))]
-                  (if (or (Int./= 128 (Int.bit-and b1 192))
-                          (Int./= 128 (Int.bit-and b2 192))
-                          (Int./= 128 (Int.bit-and b3 192))
-                          (Int.< cp 65536)
-                          (Int.> cp 1114111))
-                    (Maybe.Nothing)
-                    (Maybe.Just (Pair.init (Char.from-int cp) 4)))))
-            (Maybe.Nothing)))))
+          (if (Int.< b0 128)
+            (Maybe.Just (Pair.init (Char.from-int b0) 1))
+            (decode-multi src len pos)))))
 
     (doc any-char "consumes one UTF-8 codepoint, returning it as a
 `Char`. Fails empty at end of input or on malformed UTF-8.")

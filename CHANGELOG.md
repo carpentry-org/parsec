@@ -5,6 +5,11 @@ the project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Changed
+- parsec now depends on
+  [utf8.carp](https://github.com/carpentry-org/utf8.carp) `0.2.0`, which
+  supplies the UTF-8 validation behind the `Parser.UTF8` parsers.
+
 ### Fixed
 - `Parser.UTF8` codepoint parsers (`any-char`, `char`, `codepoint-satisfy`)
   now reject malformed UTF-8 — invalid continuation bytes, overlong
