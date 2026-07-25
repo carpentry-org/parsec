@@ -36,6 +36,52 @@
 (defn ipow [base exp]
   (let-do [acc 1] (for [i 0 exp] (set! acc (Int.* acc base))) acc))
 
+; Layered arithmetic grammar for the prefixed/postfixed/infix-n tests:
+;   cmp     = sum ('==' sum)?
+;   sum     = product (('+' | '-') product)*
+;   product = power (('*' | '/') power)*
+;   power   = unary ('^' unary)*
+;   unary   = '-'? atom '!'?
+;   atom    = integer | '(' cmp ')'
+(def *cmp* (the (Parser Int) (Parser.placeholder)))
+
+(defn sym-to [s f] (Parser.map (Parser.Lexer.symbol s) f))
+
+(defn ifact [n]
+  (let-do [acc 1] (for [i 1 (Int.inc n)] (set! acc (Int.* acc i))) acc))
+
+(defn ieq [a b] (if (Int.= a b) 1 0))
+
+(defn atom-p []
+  (Parser.alt
+    (Parser.Lexer.lexeme (Parser.Lexer.integer))
+    (Parser.between (Parser.Lexer.symbol @"(")
+                    (Parser.Lexer.symbol @")")
+                    (Parser.recurse &*cmp*))))
+
+(defn unary-p []
+  (Parser.postfixed (sym-to @"!" (fn [_] ifact))
+                    (Parser.prefixed (sym-to @"-" (fn [_] Int.neg)) (atom-p))))
+
+(defn power-p [] (Parser.chainr1 (unary-p) (sym-to @"^" (fn [_] ipow))))
+
+(defn product-p []
+  (Parser.chainl1 (power-p)
+                  (Parser.alt (sym-to @"*" (fn [_] Int.*))
+                              (sym-to @"/" (fn [_] Int./)))))
+
+(defn sum-p []
+  (Parser.chainl1 (product-p)
+                  (Parser.alt (sym-to @"+" (fn [_] Int.+))
+                              (sym-to @"-" (fn [_] Int.-)))))
+
+(def -cmp-init
+  (do (set! *cmp* (Parser.infix-n (sum-p) (sym-to @"==" (fn [_] ieq)))) 0))
+
+(defn arith [s] (Parser.parse (Parser.recurse &*cmp*) s))
+
+(defn arith-val [s] (match (arith s) (Result.Success n) n (Result.Error _) -999))
+
 (deftest test
   (assert-equal test
     42
@@ -1850,6 +1896,73 @@ line2 */"))
   (assert-true test
     (err? &(Parser.parse (Parser.Lexer.char-literal) "'a"))
     "char-literal: unterminated literal fails")
+
+  (assert-equal test
+    7
+    (arith-val "1+2*3")
+    "expression layering: * binds tighter than +, 1+2*3 = 7")
+
+  (assert-equal test
+    3
+    (arith-val "10-4-3")
+    "expression layering: left-associative (10-4)-3 = 3, not 10-(4-3) = 9")
+
+  (assert-equal test
+    512
+    (arith-val "2^3^2")
+    "expression layering: right-associative 2^(3^2) = 512")
+
+  (assert-equal test
+    9
+    (arith-val "(1+2)*3")
+    "expression layering: parenthesised recursion (1+2)*3 = 9")
+
+  (assert-equal test
+    4
+    (arith-val "-2^2")
+    "prefixed: unary minus binds tighter than ^, (-2)^2 = 4, not -(2^2) = -4")
+
+  (assert-equal test
+    -6
+    (arith-val "-2*3")
+    "prefixed: applies to the operand it precedes")
+
+  (assert-equal test
+    5
+    (arith-val "5")
+    "prefixed: operand parses unchanged when the prefix is absent")
+
+  (assert-true test
+    (err? &(arith "-"))
+    "prefixed: prefix without an operand fails")
+
+  (assert-equal test
+    7
+    (arith-val "3!+1")
+    "postfixed: binds tighter than +, (3!)+1 = 7, not (3+1)! = 24")
+
+  (assert-equal test
+    5
+    (arith-val "5 ")
+    "postfixed: operand parses unchanged when the postfix is absent")
+
+  (assert-equal test
+    1
+    (arith-val "1+1 == 2")
+    "infix-n: operands are full lower-precedence expressions")
+
+  (assert-equal test
+    0
+    (arith-val "1 == 2")
+    "infix-n: single application yields the operator's result")
+
+  (assert-true test
+    (err? &(arith "1 == 2 == 3"))
+    "infix-n: does not chain, so a second == is left unconsumed")
+
+  (assert-true test
+    (err? &(arith "1 =="))
+    "infix-n: operator without a right operand fails")
 
   (assert-true test
     (err? &(Parser.parse (Parser.Lexer.char-literal) "x"))
