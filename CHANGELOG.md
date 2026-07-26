@@ -3,6 +3,18 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 the project follows [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+- `Parser.prefixed op p` — runs an optional prefix operator before `p`,
+  applying the operator's function to `p`'s value. Without a prefix it
+  behaves like `p`.
+- `Parser.postfixed op p` — the mirror image: an optional postfix
+  operator applied to `p`'s value.
+- `Parser.infix-n p op` — one non-associative binary operator
+  application. Unlike `chainl1`/`chainr1` it never chains, so
+  `a op b op c` leaves `op c` unconsumed.
+
 ## [0.5.0]
 
 ### Added

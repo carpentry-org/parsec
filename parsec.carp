@@ -1979,3 +1979,88 @@ closing quote, an unterminated literal, or an unrecognized escape.")
                             (Reply.ErrConsumed
                               (ParseErr.expected-at &c1 @"valid escape sequence")))
                       (finish-char-literal src len &(Cursor.advance &c1 b) b))))))))))))
+
+(defmodule Parser
+  (doc prefixed "runs an optional prefix operator before `p`, applying
+the operator's function to `p`'s value. Without a prefix, behaves like
+`p`. The prefix does not repeat: `- -x` needs parentheses.")
+  (defn prefixed [op p]
+    (Parser.init
+      (fn [src len cur]
+        (match (~(Parser.run &op) src len cur)
+          (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+          (Reply.ErrEmpty e1)
+            (match (~(Parser.run &p) src len cur)
+              (Reply.OkConsumed v c) (Reply.OkConsumed v c)
+              (Reply.OkEmpty v c) (Reply.OkEmpty v c)
+              (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+              (Reply.ErrEmpty e2) (Reply.ErrEmpty (ParseErr.merge e1 e2)))
+          (Reply.OkConsumed f c)
+            (match (~(Parser.run &p) src len &c)
+              (Reply.OkConsumed v c2) (Reply.OkConsumed (f v) c2)
+              (Reply.OkEmpty v c2) (Reply.OkConsumed (f v) c2)
+              (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+              (Reply.ErrEmpty e) (Reply.ErrConsumed e))
+          (Reply.OkEmpty f c)
+            (match (~(Parser.run &p) src len &c)
+              (Reply.OkConsumed v c2) (Reply.OkConsumed (f v) c2)
+              (Reply.OkEmpty v c2) (Reply.OkEmpty (f v) c2)
+              (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+              (Reply.ErrEmpty e) (Reply.ErrEmpty e))))))
+
+  (doc postfixed "runs `p` followed by an optional postfix operator,
+applying the operator's function to `p`'s value. Without a postfix,
+behaves like `p`. The postfix does not repeat.")
+  (defn postfixed [op p]
+    (Parser.init
+      (fn [src len cur]
+        (match (~(Parser.run &p) src len cur)
+          (Reply.ErrEmpty e) (Reply.ErrEmpty e)
+          (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+          (Reply.OkConsumed v c)
+            (match (~(Parser.run &op) src len &c)
+              (Reply.OkConsumed f c2) (Reply.OkConsumed (f v) c2)
+              (Reply.OkEmpty f c2) (Reply.OkConsumed (f v) c2)
+              (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+              (Reply.ErrEmpty _) (Reply.OkConsumed v c))
+          (Reply.OkEmpty v c)
+            (match (~(Parser.run &op) src len &c)
+              (Reply.OkConsumed f c2) (Reply.OkConsumed (f v) c2)
+              (Reply.OkEmpty f c2) (Reply.OkEmpty (f v) c2)
+              (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+              (Reply.ErrEmpty _) (Reply.OkEmpty v c))))))
+
+  (private infix-n-rhs)
+  (hidden infix-n-rhs)
+  (defn infix-n-rhs [p f lhs src len start-cur consumed]
+    (match (~(Parser.run p) src len &start-cur)
+      (Reply.OkConsumed v c) (Reply.OkConsumed (f lhs v) c)
+      (Reply.OkEmpty v c)
+        (if consumed (Reply.OkConsumed (f lhs v) c) (Reply.OkEmpty (f lhs v) c))
+      (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+      (Reply.ErrEmpty e) (if consumed (Reply.ErrConsumed e) (Reply.ErrEmpty e))))
+
+  (private infix-n-step)
+  (hidden infix-n-step)
+  (defn infix-n-step [p op src len start-cur lhs start-consumed]
+    (match (~(Parser.run op) src len &start-cur)
+      (Reply.ErrEmpty _)
+        (if start-consumed
+          (Reply.OkConsumed lhs start-cur)
+          (Reply.OkEmpty lhs start-cur))
+      (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+      (Reply.OkConsumed f c) (infix-n-rhs p f lhs src len c true)
+      (Reply.OkEmpty f c) (infix-n-rhs p f lhs src len c start-consumed)))
+
+  (doc infix-n "parses `p` optionally followed by one `op` and a second
+`p`, where `op` returns a binary function. Non-associative: it never
+chains, so `a op b op c` stops after `a op b` and leaves `op c`
+unconsumed, which `parse` then reports as an error.")
+  (defn infix-n [p op]
+    (Parser.init
+      (fn [src len cur]
+        (match (~(Parser.run &p) src len cur)
+          (Reply.ErrEmpty e) (Reply.ErrEmpty e)
+          (Reply.ErrConsumed e) (Reply.ErrConsumed e)
+          (Reply.OkConsumed v c) (infix-n-step &p &op src len c v true)
+          (Reply.OkEmpty v c) (infix-n-step &p &op src len c v false))))))
