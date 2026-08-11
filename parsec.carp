@@ -1428,7 +1428,8 @@ digits as an `Int`. Fused into a single closure.")
               (set! negate? true))
             (let [digit-start @(Cursor.pos &c)
                   c2 (scan-digits src len &c)]
-              (if (Int.> @(Cursor.pos &c2) digit-start)
+              (cond
+                (Int.> @(Cursor.pos &c2) digit-start)
                 (let [s (String.byte-slice src digit-start @(Cursor.pos &c2))]
                   (match (Int.from-string &s)
                     (Maybe.Just n)
@@ -1438,9 +1439,9 @@ digits as an `Int`. Fused into a single closure.")
                     (Maybe.Nothing)
                       (Reply.ErrConsumed (ParseErr.expected-at &c2 @"integer"))))
                 ; Sign consumed but no digits: consumed-failure.
-                (if negate?
-                  (Reply.ErrConsumed (ParseErr.expected-at &c2 @"integer"))
-                  (Reply.ErrEmpty (ParseErr.expected-at cur @"integer")))))))))
+                negate?
+                (Reply.ErrConsumed (ParseErr.expected-at &c2 @"integer"))
+                (Reply.ErrEmpty (ParseErr.expected-at cur @"integer"))))))))
 
     (doc identifier "parses a C-style identifier: a letter or
 underscore, followed by zero or more letters, digits, or underscores.
