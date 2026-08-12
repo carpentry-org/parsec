@@ -6,7 +6,7 @@
 ## Installation
 
 ```
-(load \"git@github.com:carpentry-org/parsec@0.5.0\")
+(load \"git@github.com:carpentry-org/parsec@0.6.0\")
 ```
 
 ## Usage

@@ -5,6 +5,8 @@ the project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+## [0.6.0]
+
 ### Added
 - `Parser.prefixed op p` — runs an optional prefix operator before `p`,
   applying the operator's function to `p`'s value. Without a prefix it
