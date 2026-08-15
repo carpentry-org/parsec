@@ -5,6 +5,11 @@ the project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+## [0.6.1]
+
+### Changed
+- `strbuf` dependency bumped to 0.2.1.
+
 ### Fixed
 - `Parser.UTF8` codepoint parsers (`any-char`, `char`, `codepoint-satisfy`)
   now reject malformed UTF-8 — invalid continuation bytes, overlong

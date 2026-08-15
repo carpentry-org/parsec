@@ -5,7 +5,7 @@ A Parsec-style parser combinator library for Carp.
 ## Install
 
 ```clojure
-(load "git@github.com:carpentry-org/parsec@0.6.0")
+(load "git@github.com:carpentry-org/parsec@0.6.1")
 ```
 
 ## Example
