@@ -6,6 +6,20 @@
 
 (defn err? [r] (match-ref r (Result.Success _) false (Result.Error _) true))
 
+(defn utf8-cp [bs]
+  (match (Parser.parse (Parser.UTF8.any-char) &(String.from-bytes bs))
+    (Result.Success c) (Char.to-int c)
+    (Result.Error _) -1))
+
+; `alt` reaches `any-byte` only if `any-char` rejected the lead empty, so the
+; remainder here pins that a malformed lead advanced nothing.
+(defn utf8-tail-after-lead [bs]
+  (match (Parser.parse-partial
+      (Parser.alt (Parser.UTF8.any-char) (Parser.any-byte))
+      &(String.from-bytes bs))
+    (Result.Success p) @(Pair.b &p)
+    (Result.Error _) @"<consumed>"))
+
 ; Recursive grammar for the lazy combinator test. The lazy thunk must call
 ; a sibling function, not the immediately enclosing one — so we split into
 ; `parens-pair` and `parens-content`.
@@ -866,19 +880,152 @@ b")
       _ false)
     "expected-set: labeled alts merge into the human-readable error")
 
-  ; "\xc3" is the start byte of a 2-byte UTF-8 sequence (e.g. é = c3 a9)
-  ; but appears alone — truncated. any-char should fail empty.
-  (assert-true test
-    (err?
-      &(Parser.parse (Parser.UTF8.any-char)
-                     &(String.from-bytes &[(Byte.from-int 195)])))
-    "utf8: truncated 2-byte sequence fails empty")
+  (assert-equal test
+    -1
+    (utf8-cp &[(Byte.from-int 195)])
+    "utf8: truncated 2-byte sequence fails")
 
   (assert-true test
-    (err?
-      &(Parser.parse (Parser.UTF8.any-char)
-                     &(String.from-bytes &[(Byte.from-int 128)])))
-    "utf8: lone continuation byte fails empty")
+    (= "" &(utf8-tail-after-lead &[(Byte.from-int 195)]))
+    "utf8: truncated 2-byte lead is left unconsumed")
+
+  (assert-equal test
+    -1
+    (utf8-cp &[(Byte.from-int 128)])
+    "utf8: lone continuation byte fails")
+
+  (assert-true test
+    (= "" &(utf8-tail-after-lead &[(Byte.from-int 128)]))
+    "utf8: lone continuation byte is left unconsumed")
+
+  (assert-equal test
+    -1
+    (utf8-cp &[(Byte.from-int 195) (Byte.from-int 40)])
+    "utf8: bad continuation byte (C3 28) fails")
+
+  (assert-true test
+    (= "(" &(utf8-tail-after-lead &[(Byte.from-int 195) (Byte.from-int 40)]))
+    "utf8: bad continuation leaves the following byte unconsumed")
+
+  (assert-equal test
+    -1
+    (utf8-cp &[(Byte.from-int 224) (Byte.from-int 160) (Byte.from-int 40)])
+    "utf8: bad second continuation byte (E0 A0 28) fails")
+
+  (assert-equal test
+    -1
+    (utf8-cp &[(Byte.from-int 192) (Byte.from-int 128)])
+    "utf8: overlong NUL (C0 80) fails")
+
+  (assert-equal test
+    -1
+    (utf8-cp &[(Byte.from-int 192) (Byte.from-int 175)])
+    "utf8: overlong slash (C0 AF) fails")
+
+  (assert-equal test
+    -1
+    (utf8-cp &[(Byte.from-int 224) (Byte.from-int 128) (Byte.from-int 128)])
+    "utf8: overlong 3-byte NUL (E0 80 80) fails")
+
+  (assert-equal test
+    -1
+    (utf8-cp &[(Byte.from-int 224) (Byte.from-int 159) (Byte.from-int 191)])
+    "utf8: overlong 3-byte U+07FF (E0 9F BF) fails")
+
+  (assert-equal test
+    -1
+    (utf8-cp
+      &[(Byte.from-int 240)
+        (Byte.from-int 128)
+        (Byte.from-int 128)
+        (Byte.from-int 128)])
+    "utf8: overlong 4-byte NUL (F0 80 80 80) fails")
+
+  (assert-equal test
+    -1
+    (utf8-cp &[(Byte.from-int 237) (Byte.from-int 160) (Byte.from-int 128)])
+    "utf8: low surrogate U+D800 (ED A0 80) fails")
+
+  (assert-equal test
+    -1
+    (utf8-cp &[(Byte.from-int 237) (Byte.from-int 191) (Byte.from-int 191)])
+    "utf8: high surrogate U+DFFF (ED BF BF) fails")
+
+  (assert-equal test
+    -1
+    (utf8-cp
+      &[(Byte.from-int 244)
+        (Byte.from-int 144)
+        (Byte.from-int 128)
+        (Byte.from-int 128)])
+    "utf8: above U+10FFFF (F4 90 80 80) fails")
+
+  (assert-equal test
+    -1
+    (utf8-cp
+      &[(Byte.from-int 245)
+        (Byte.from-int 128)
+        (Byte.from-int 128)
+        (Byte.from-int 128)])
+    "utf8: 5-wide lead range (F5 80 80 80) fails")
+
+  (assert-equal test
+    233
+    (utf8-cp &[(Byte.from-int 195) (Byte.from-int 169)])
+    "utf8: valid 2-byte (é, C3 A9) decodes")
+
+  (assert-equal test
+    127
+    (utf8-cp &[(Byte.from-int 127)])
+    "utf8: boundary U+007F (7F) decodes")
+
+  (assert-equal test
+    128
+    (utf8-cp &[(Byte.from-int 194) (Byte.from-int 128)])
+    "utf8: boundary U+0080 (C2 80) decodes")
+
+  (assert-equal test
+    2047
+    (utf8-cp &[(Byte.from-int 223) (Byte.from-int 191)])
+    "utf8: boundary U+07FF (DF BF) decodes")
+
+  (assert-equal test
+    2048
+    (utf8-cp &[(Byte.from-int 224) (Byte.from-int 160) (Byte.from-int 128)])
+    "utf8: boundary U+0800 (E0 A0 80) decodes")
+
+  (assert-equal test
+    55295
+    (utf8-cp &[(Byte.from-int 237) (Byte.from-int 159) (Byte.from-int 191)])
+    "utf8: boundary U+D7FF (ED 9F BF) decodes")
+
+  (assert-equal test
+    57344
+    (utf8-cp &[(Byte.from-int 238) (Byte.from-int 128) (Byte.from-int 128)])
+    "utf8: boundary U+E000 (EE 80 80) decodes")
+
+  (assert-equal test
+    65535
+    (utf8-cp &[(Byte.from-int 239) (Byte.from-int 191) (Byte.from-int 191)])
+    "utf8: boundary U+FFFF (EF BF BF) decodes")
+
+  (assert-equal test
+    65536
+    (utf8-cp
+      &[(Byte.from-int 240)
+        (Byte.from-int 144)
+        (Byte.from-int 128)
+        (Byte.from-int 128)])
+    "utf8: boundary U+10000 (F0 90 80 80) decodes")
+
+  (assert-equal test
+    1114111
+    (utf8-cp
+      &[(Byte.from-int 244)
+        (Byte.from-int 143)
+        (Byte.from-int 191)
+        (Byte.from-int 191)])
+    "utf8: boundary U+10FFFF (F4 8F BF BF) decodes")
 
   (assert-equal test
     \b
