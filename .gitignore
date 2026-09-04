@@ -2,3 +2,4 @@
 .DS_Store
 bench/compare/haskell/dist-newstyle/
 bench/compare/haskell/cabal.project.local
+docs/
