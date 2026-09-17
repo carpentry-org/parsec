@@ -5,6 +5,15 @@ the project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+## [0.6.2]
+
+### Changed
+- `strbuf` dependency bumped to 0.3.0.
+- `error-message` hands its buffer to the returned string with
+  `StringBuf.into-string` instead of copying it and freeing the buffer.
+- Dropped the manual buffer delete in the string-literal parser; `strbuf`
+  implements `delete`, so the compiler frees it.
+
 ## [0.6.1]
 
 ### Changed

@@ -1,4 +1,4 @@
-(load "git@github.com:carpentry-org/strbuf@0.2.1")
+(load "git@github.com:carpentry-org/strbuf@0.3.0")
 (relative-include "src/parsec_ffi.h")
 
 (doc Parser "is a Parsec-style parser combinator library for Carp.
@@ -6,7 +6,7 @@
 ## Installation
 
 ```
-(load \"git@github.com:carpentry-org/parsec@0.6.1\")
+(load \"git@github.com:carpentry-org/parsec@0.6.2\")
 ```
 
 ## Usage
@@ -1563,7 +1563,7 @@ Uses `StringBuf` internally.")
                 (do
                   (when (Int.> i 0) (StringBuf.append-str &sb ", "))
                   (StringBuf.append-str &sb (Array.unsafe-nth a i)))))))
-      (let-do [s (StringBuf.to-string &sb)] (StringBuf.delete sb) s)))
+      (StringBuf.into-string sb)))
 
   (doc parse "runs `p` over the entire input. Strict: fails if `p`
 doesn't consume all of `src`. Returns `(Result a ParseErr)`.")
@@ -1953,7 +1953,6 @@ string.")
                           (do
                             (StringBuf.append-char &sb ch)
                             (set! c (Cursor.advance &c ch))))))))
-                (StringBuf.delete sb)
                 result))))))
 
     (private finish-char-literal)
