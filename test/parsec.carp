@@ -730,6 +730,25 @@
     "integer rejects negative overflow")
 
   (assert-equal test
+    Int.MIN
+    (match (Parser.parse (Parser.Lexer.integer) "-2147483648") (Result.Success n) n _ 0)
+    "integer parses the smallest Int")
+
+  (assert-equal test
+    Int.MIN
+    (match (Parser.parse (Parser.Lexer.integer) "-0002147483648") (Result.Success n) n _ 0)
+    "integer parses the smallest Int with leading zeros")
+
+  (assert-equal test
+    0
+    (match (Parser.parse (Parser.Lexer.integer) "-0") (Result.Success n) n _ -1)
+    "integer parses negative zero")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.integer) "-2147483649"))
+    "integer rejects one below the smallest Int")
+
+  (assert-equal test
     42
     (match (Parser.parse (Parser.Lexer.unsigned-int) "042")
       (Result.Success n) n
