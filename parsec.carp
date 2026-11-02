@@ -1384,12 +1384,21 @@ handling, integers, identifiers, and literal symbols.")
     (defn int-overflow? [s n]
       (if (Int.<= (String.length s) 1)
         false
-        (let-do [i 0
-                 slen (String.length s)]
+        (let-do [slen (String.length s)
+                 signed? (Char.= (String.char-at s 0) \-)
+                 start (if signed? 1 0)
+                 i start]
           (while-do (and (Int.< i (Int.- slen 1))
                          (Char.= (String.char-at s i) \0))
             (set! i (Int.+ i 1)))
-          (not (String.= &(Int.str n) &(String.byte-slice s i slen))))))
+          (not
+            (if (and (Int.= i start) (or (not signed?) (/= n 0)))
+              (String.= &(Int.str n) s)
+              (let [digits (String.byte-slice s i slen)]
+                (String.= &(Int.str n)
+                          &(if (and signed? (/= n 0))
+                            (String.append "-" &digits)
+                            digits))))))))
 
     (private space?)
     (hidden space?)
@@ -1443,12 +1452,14 @@ digits as an `Int`. Fused into a single closure.")
                   c2 (scan-digits src len &c)]
               (cond
                 (Int.> @(Cursor.pos &c2) digit-start)
-                (let [s (String.byte-slice src digit-start @(Cursor.pos &c2))]
+                (let [s (String.byte-slice src
+                                           @(Cursor.pos cur)
+                                           @(Cursor.pos &c2))]
                   (match (Int.from-string &s)
                     (Maybe.Just n)
                       (if (int-overflow? &s n)
                         (Reply.ErrConsumed (ParseErr.expected-at &c2 @"integer"))
-                        (Reply.OkConsumed (if negate? (Int.neg n) n) c2))
+                        (Reply.OkConsumed n c2))
                     (Maybe.Nothing)
                       (Reply.ErrConsumed (ParseErr.expected-at &c2 @"integer"))))
                 ; Sign consumed but no digits: consumed-failure.
