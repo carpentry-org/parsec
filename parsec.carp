@@ -1386,16 +1386,19 @@ handling, integers, identifiers, and literal symbols.")
         false
         (let-do [slen (String.length s)
                  signed? (Char.= (String.char-at s 0) \-)
-                 i (if signed? 1 0)]
+                 start (if signed? 1 0)
+                 i start]
           (while-do (and (Int.< i (Int.- slen 1))
                          (Char.= (String.char-at s i) \0))
             (set! i (Int.+ i 1)))
-          (let [digits (String.byte-slice s i slen)]
-            (not
-              (String.= &(Int.str n)
-                        &(if (and signed? (/= n 0))
-                          (String.append "-" &digits)
-                          digits)))))))
+          (not
+            (if (and (Int.= i start) (or (not signed?) (/= n 0)))
+              (String.= &(Int.str n) s)
+              (let [digits (String.byte-slice s i slen)]
+                (String.= &(Int.str n)
+                          &(if (and signed? (/= n 0))
+                            (String.append "-" &digits)
+                            digits))))))))
 
     (private space?)
     (hidden space?)

@@ -6,8 +6,9 @@ the project follows [Semantic Versioning](https://semver.org/).
 ## Unreleased
 
 ### Fixed
-- `Lexer.integer` accepts `-2147483648` (`Int.MIN`). It used to convert the
-  digits without the sign, so the overflow check rejected that one value.
+- `Parser.Lexer.integer` accepts `-2147483648` (`Int.MIN`). It used to
+  convert the digits without the sign, so the overflow check rejected that
+  one value.
 
 ## [0.6.2]
 
