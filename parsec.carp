@@ -1784,6 +1784,7 @@ LF). Returns the byte.")
               (let-do [c (Cursor.advance cur \0)
                        digit-start 0
                        val 0
+                       limit (Int./ Int.MAX radix)
                        going true
                        overflow false]
                 (set! c (Cursor.advance &c (String.char-at src (Int.+ pos 1))))
@@ -1793,17 +1794,14 @@ LF). Returns the byte.")
                     (set! going false)
                     (let [ch (String.char-at src @(Cursor.pos &c))
                           dv (digit-val ch)]
-                      (if (Int.< dv 0)
-                        (set! going false)
-                        (let [temp (Int.* val radix)]
-                          (if (/= (Int./ temp radix) val)
-                            (do (set! overflow true) (set! going false))
-                            (let [new-val (Int.+ temp dv)]
-                              (if (Int.< new-val temp)
-                                (do (set! overflow true) (set! going false))
-                                (do
-                                  (set! val new-val)
-                                  (set! c (Cursor.advance &c ch)))))))))))
+                      (cond
+                        (Int.< dv 0) (set! going false)
+                        (or (Int.> val limit)
+                            (Int.> (Int.* val radix) (Int.- Int.MAX dv)))
+                          (do (set! overflow true) (set! going false))
+                        (do
+                          (set! val (Int.+ (Int.* val radix) dv))
+                          (set! c (Cursor.advance &c ch)))))))
                 (cond
                   (= @(Cursor.pos &c) digit-start)
                     (Reply.ErrConsumed (ParseErr.expected-at &c @&digit-label))

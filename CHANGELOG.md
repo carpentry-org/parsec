@@ -9,6 +9,9 @@ the project follows [Semantic Versioning](https://semver.org/).
 - `Parser.Lexer.integer` accepts `-2147483648` (`Int.MIN`). It used to
   convert the digits without the sign, so the overflow check rejected that
   one value.
+- `Parser.Lexer.hex-int`, `Parser.Lexer.octal-int` and
+  `Parser.Lexer.binary-int` reject overflowing literals in optimized builds
+  too. Under `carp --optimize` they used to return a wrapped value.
 
 ## [0.6.2]
 

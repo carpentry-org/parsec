@@ -1780,6 +1780,17 @@ line2 */"))
     "hex-int: rejects overflow")
 
   (assert-equal test
+    Int.MAX
+    (match (Parser.parse (Parser.Lexer.hex-int) "0x7fffffff")
+      (Result.Success n) n
+      _ -1)
+    "hex-int: accepts Int.MAX")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.hex-int) "0x80000000"))
+    "hex-int: rejects Int.MAX + 1")
+
+  (assert-equal test
     8
     (match (Parser.parse (Parser.Lexer.octal-int) "0o10")
       (Result.Success n) n
@@ -1822,6 +1833,17 @@ line2 */"))
   (assert-true test
     (err? &(Parser.parse (Parser.Lexer.octal-int) "0o7777777777777777777777"))
     "octal-int: rejects overflow")
+
+  (assert-equal test
+    Int.MAX
+    (match (Parser.parse (Parser.Lexer.octal-int) "0o17777777777")
+      (Result.Success n) n
+      _ -1)
+    "octal-int: accepts Int.MAX")
+
+  (assert-true test
+    (err? &(Parser.parse (Parser.Lexer.octal-int) "0o20000000000"))
+    "octal-int: rejects Int.MAX + 1")
 
   (assert-equal test
     5
@@ -1868,6 +1890,20 @@ line2 */"))
       &(Parser.parse (Parser.Lexer.binary-int)
                      "0b1111111111111111111111111111111111111111111111111111111111111111"))
     "binary-int: rejects overflow (64 ones)")
+
+  (assert-equal test
+    Int.MAX
+    (match (Parser.parse (Parser.Lexer.binary-int)
+                         "0b1111111111111111111111111111111")
+      (Result.Success n) n
+      _ -1)
+    "binary-int: accepts Int.MAX")
+
+  (assert-true test
+    (err?
+      &(Parser.parse (Parser.Lexer.binary-int)
+                     "0b10000000000000000000000000000000"))
+    "binary-int: rejects Int.MAX + 1")
 
   (assert-true test
     (err?
