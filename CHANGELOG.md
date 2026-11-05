@@ -3,7 +3,7 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 the project follows [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## [0.6.3]
 
 ### Fixed
 - `Parser.Lexer.integer` accepts `-2147483648` (`Int.MIN`). It used to
