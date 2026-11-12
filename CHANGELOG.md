@@ -3,6 +3,13 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 the project follows [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Fixed
+- When all alternatives fail, the error is reported where the furthest one
+  failed, with only the labels expected there, instead of at one
+  alternative's position with the labels of all of them.
+
 ## [0.6.3]
 
 ### Fixed
