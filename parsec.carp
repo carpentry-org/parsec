@@ -66,8 +66,8 @@ allocating an intermediate `Cursor` per byte.")
 
 (doc Expected "is the set of labels carried by a `ParseErr`. The
 common case (a single failing primitive) uses `One` to skip a
-1-element `Array` allocation; merged failures collected by `choice`
-use `Many`.")
+1-element `Array` allocation; labels gathered from several failures
+at one position use `Many`.")
 (deftype Expected
   (One [String])
   (Many [(Array String)]))
@@ -85,8 +85,8 @@ Allocates a 1-element array for the `One` case.")
 
   (doc append-into "drains the labels in `e` onto the end of `acc`,
 returning the new array. Used by `Parser.choice` to accumulate
-labels across failed alternatives without going through
-`to-array`'s allocation in the `One` case.")
+the labels of alternatives that fail at the same position without
+going through `to-array`'s allocation in the `One` case.")
   (defn append-into [acc e]
     (match-ref e
       (One s) (Array.push-back acc @s)
@@ -991,8 +991,10 @@ also be followed by `sep`. Returns an `Array` of `p` values.")
 
   (doc choice "tries each parser in turn; returns the first
 success. If all parsers fail empty, the error is the furthest failure,
-with the expected sets of all parsers that failed there. A consumed
-failure of any parser short-circuits (use `try` inside if needed).")
+with the expected sets of all parsers that failed there; a failure with
+neither labels nor an `unexpected` (as from `choice []`) loses to one
+that has them. A consumed failure of any parser short-circuits (use
+`try` inside if needed).")
   (defn choice [ps]
     (Parser.init
       (fn [src len cur]
@@ -1000,7 +1002,11 @@ failure of any parser short-circuits (use `try` inside if needed).")
                  i 0
                  going true
                  result (the (Reply a) (Reply.ErrEmpty (ParseErr.empty-at cur)))
-                 err (ParseErr.empty-at cur)]
+                 labels []
+                 err-pos @(Cursor.pos cur)
+                 err-line @(Cursor.line cur)
+                 err-col @(Cursor.col cur)
+                 err-unx (the (Maybe String) (Maybe.Nothing))]
           (while-do (and going (Int.< i n))
             (match (~(Parser.run (Array.unsafe-nth &ps i)) src len cur)
               (Reply.OkConsumed v c)
@@ -1009,9 +1015,41 @@ failure of any parser short-circuits (use `try` inside if needed).")
                 (do (set! result (Reply.OkEmpty v c)) (set! going false))
               (Reply.ErrConsumed e)
                 (do (set! result (Reply.ErrConsumed e)) (set! going false))
-              (Reply.ErrEmpty e) (set! err (ParseErr.merge err e)))
+              (Reply.ErrEmpty e)
+                (let [pe @(ParseErr.pos &e)
+                      ie (or (Maybe.just? (ParseErr.unexpected &e))
+                             (Int.> (Expected.length (ParseErr.expected &e)) 0))
+                      ia (or (Maybe.just? &err-unx)
+                             (Int.> (Array.length &labels) 0))]
+                  (cond
+                    (Int.= pe err-pos)
+                      (do
+                        (set! labels
+                              (Expected.append-into labels
+                                                    (ParseErr.expected &e)))
+                        (match @(ParseErr.unexpected &e)
+                          (Maybe.Just s) (set! err-unx (Maybe.Just s))
+                          (Maybe.Nothing) ())
+                        (set! err-line @(ParseErr.line &e))
+                        (set! err-col @(ParseErr.col &e)))
+                    (if (Bool.= ie ia) (Int.> pe err-pos) ie)
+                      (do
+                        (set! labels
+                              (Expected.append-into [] (ParseErr.expected &e)))
+                        (set! err-unx @(ParseErr.unexpected &e))
+                        (set! err-pos pe)
+                        (set! err-line @(ParseErr.line &e))
+                        (set! err-col @(ParseErr.col &e)))
+                    ())))
             (set! i (Int.inc i)))
-          (if going (Reply.ErrEmpty err) result)))))
+          (if going
+            (Reply.ErrEmpty
+              (ParseErr.init err-pos
+                             err-line
+                             err-col
+                             err-unx
+                             (Expected.Many labels)))
+            result)))))
 
   (private chainl1-loop)
   (hidden chainl1-loop)

@@ -964,6 +964,30 @@ b")
     "expected-set: a labelled failure beats a deeper one with no labels")
 
   (assert-equal test
+    "parse error at 1:1: unexpected 'x'; expected: digit, 'c'"
+    &(error-message
+      (Parser.parse (Parser.alt (Parser.Lexer.digit) (Parser.byte \c)) "x"))
+    "expected-set: alt keeps both labels in order and the unexpected byte at one position")
+
+  (assert-equal test
+    "parse error at 1:1: unexpected 'x'; expected: digit, 'c'"
+    &(error-message
+      (Parser.parse (Parser.choice [(Parser.Lexer.digit) (Parser.byte \c)]) "x"))
+    "expected-set: choice keeps both labels in order and the unexpected byte at one position")
+
+  (assert-equal test
+    "parse error at 1:1; expected: 'c'"
+    &(error-message
+      (Parser.parse
+        (Parser.choice
+          [(Parser.byte \c)
+           (Parser.try
+             (Parser.then (Parser.byte \a)
+                          (the (Parser Char) (Parser.choice []))))])
+        "ax"))
+    "expected-set: choice prefers a labelled failure to a deeper one with no labels")
+
+  (assert-equal test
     -1
     (utf8-cp &[(Byte.from-int 195)])
     "utf8: truncated 2-byte sequence fails")
