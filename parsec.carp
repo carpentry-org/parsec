@@ -66,8 +66,8 @@ allocating an intermediate `Cursor` per byte.")
 
 (doc Expected "is the set of labels carried by a `ParseErr`. The
 common case (a single failing primitive) uses `One` to skip a
-1-element `Array` allocation; merged failures collected by `choice`
-use `Many`.")
+1-element `Array` allocation; labels gathered from several failures
+at one position use `Many`.")
 (deftype Expected
   (One [String])
   (Many [(Array String)]))
@@ -85,8 +85,8 @@ Allocates a 1-element array for the `One` case.")
 
   (doc append-into "drains the labels in `e` onto the end of `acc`,
 returning the new array. Used by `Parser.choice` to accumulate
-labels across failed alternatives without going through
-`to-array`'s allocation in the `One` case.")
+the labels of alternatives that fail at the same position without
+going through `to-array`'s allocation in the `One` case.")
   (defn append-into [acc e]
     (match-ref e
       (One s) (Array.push-back acc @s)
@@ -124,22 +124,33 @@ gathered from parsers that failed at that position. Render with
                    (Maybe.Nothing)
                    (Expected.One lbl)))
 
+  (defn- informative? [e]
+    (or (Maybe.just? (ParseErr.unexpected e))
+        (Int.> (Expected.length (ParseErr.expected e)) 0)))
+
   (hidden merge)
-  (doc merge "merges two `ParseErr`s by unioning their expected
-sets. Position is taken from `b`.")
+  (doc merge "merges two `ParseErr`s like Parsec's `mergeError`. At the
+same position, the expected sets are unioned and `b`'s `unexpected` wins
+if it has one. Otherwise an error with labels or an `unexpected` beats one
+with neither; if both or neither have them, the one further in wins.")
   (defn merge [a b]
-    (let [exp (Expected.Many
-            (Expected.append-into
-              (Expected.append-into [] (ParseErr.expected &a))
-              (ParseErr.expected &b)))
-          unx (match @(ParseErr.unexpected &b)
-            (Maybe.Just s) (Maybe.Just s)
-            (Maybe.Nothing) @(ParseErr.unexpected &a))]
-      (ParseErr.init @(ParseErr.pos &b)
-                     @(ParseErr.line &b)
-                     @(ParseErr.col &b)
-                     unx
-                     exp))))
+    (let [pa @(ParseErr.pos &a)
+          pb @(ParseErr.pos &b)
+          ia (informative? &a)
+          ib (informative? &b)]
+      (cond
+        (Int.= pa pb)
+          (let [exp (Expected.Many
+                  (Expected.append-into
+                    (Expected.append-into [] (ParseErr.expected &a))
+                    (ParseErr.expected &b)))
+                unx (match @(ParseErr.unexpected &b)
+                  (Maybe.Just s) (Maybe.Just s)
+                  (Maybe.Nothing) @(ParseErr.unexpected &a))]
+            (ParseErr.init pb @(ParseErr.line &b) @(ParseErr.col &b) unx exp))
+        (not (Bool.= ia ib)) (if ia a b)
+        (Int.> pa pb) a
+        b))))
 
 (doc Reply "is the 4-case result of running a parser: `OkConsumed`,
 `OkEmpty`, `ErrConsumed`, `ErrEmpty`. The consumed/empty distinction
@@ -979,9 +990,11 @@ also be followed by `sep`. Returns an `Array` of `p` values.")
               (Reply.ErrConsumed e) (Reply.ErrConsumed e))))))
 
   (doc choice "tries each parser in turn; returns the first
-success. If all parsers fail empty, the resulting failure merges
-their expected sets. A consumed failure of any parser short-circuits
-(use `try` inside if needed).")
+success. If all parsers fail empty, the error is the furthest failure,
+with the expected sets of all parsers that failed there; a failure with
+neither labels nor an `unexpected` (as from `choice []`) loses to one
+that has them. A consumed failure of any parser short-circuits (use
+`try` inside if needed).")
   (defn choice [ps]
     (Parser.init
       (fn [src len cur]
@@ -1003,15 +1016,31 @@ their expected sets. A consumed failure of any parser short-circuits
               (Reply.ErrConsumed e)
                 (do (set! result (Reply.ErrConsumed e)) (set! going false))
               (Reply.ErrEmpty e)
-                (do
-                  (set! err-pos @(ParseErr.pos &e))
-                  (set! err-line @(ParseErr.line &e))
-                  (set! err-col @(ParseErr.col &e))
-                  (match @(ParseErr.unexpected &e)
-                    (Maybe.Just s) (set! err-unx (Maybe.Just s))
-                    (Maybe.Nothing) ())
-                  (set! labels
-                        (Expected.append-into labels (ParseErr.expected &e)))))
+                (let [pe @(ParseErr.pos &e)
+                      ie (or (Maybe.just? (ParseErr.unexpected &e))
+                             (Int.> (Expected.length (ParseErr.expected &e)) 0))
+                      ia (or (Maybe.just? &err-unx)
+                             (Int.> (Array.length &labels) 0))]
+                  (cond
+                    (Int.= pe err-pos)
+                      (do
+                        (set! labels
+                              (Expected.append-into labels
+                                                    (ParseErr.expected &e)))
+                        (match @(ParseErr.unexpected &e)
+                          (Maybe.Just s) (set! err-unx (Maybe.Just s))
+                          (Maybe.Nothing) ())
+                        (set! err-line @(ParseErr.line &e))
+                        (set! err-col @(ParseErr.col &e)))
+                    (if (Bool.= ie ia) (Int.> pe err-pos) ie)
+                      (do
+                        (set! labels
+                              (Expected.append-into [] (ParseErr.expected &e)))
+                        (set! err-unx @(ParseErr.unexpected &e))
+                        (set! err-pos pe)
+                        (set! err-line @(ParseErr.line &e))
+                        (set! err-col @(ParseErr.col &e)))
+                    ())))
             (set! i (Int.inc i)))
           (if going
             (Reply.ErrEmpty

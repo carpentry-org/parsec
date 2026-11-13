@@ -157,6 +157,13 @@
 
 (defn before-missing-suffix [p] (Parser.before p (Parser.Lexer.symbol @"?")))
 
+(defn error-message [r]
+  (match r
+    (Result.Error e) (Parser.format-error &e)
+    (Result.Success _) @"no error"))
+
+(defn try-ab [] (Parser.try (Parser.then (Parser.byte \a) (Parser.byte \b))))
+
 (deftest test
   (assert-equal test
     42
@@ -898,6 +905,87 @@ b")
             (String.contains-string? &(Parser.format-error &e) "beta")))
       _ false)
     "expected-set: labeled alts merge into the human-readable error")
+
+  (assert-equal test
+    "parse error at 1:2; expected: 'b'"
+    &(error-message (Parser.parse (Parser.alt (try-ab) (Parser.byte \c)) "ax"))
+    "expected-set: alt reports a deeper try'd failure in its first branch alone")
+
+  (assert-equal test
+    "parse error at 1:2; expected: 'b'"
+    &(error-message (Parser.parse (Parser.alt (Parser.byte \c) (try-ab)) "ax"))
+    "expected-set: alt reports a deeper try'd failure in its second branch alone")
+
+  (assert-equal test
+    "parse error at 1:2; expected: 'b'"
+    &(error-message
+      (Parser.parse (Parser.choice [(try-ab) (Parser.byte \c)]) "ax"))
+    "expected-set: choice reports a deeper try'd failure in its first parser alone")
+
+  (assert-equal test
+    "parse error at 1:2; expected: 'b'"
+    &(error-message
+      (Parser.parse (Parser.choice [(Parser.byte \c) (try-ab)]) "ax"))
+    "expected-set: choice reports a deeper try'd failure in its last parser alone")
+
+  (assert-equal test
+    "parse error at 1:3; expected: 'd'"
+    &(error-message
+      (Parser.parse
+        (Parser.choice
+          [(Parser.satisfy (fn [c] (Char.num? c)) @"digit")
+           (Parser.try (Parser.then (Parser.string @"ab") (Parser.byte \d)))
+           (Parser.try (Parser.then (Parser.byte \a) (Parser.byte \e)))])
+        "abx"))
+    "expected-set: choice reports the deepest of three failures, from the middle parser")
+
+  (assert-equal test
+    "parse error at 1:2; expected: '-'"
+    &(error-message
+      (Parser.parse
+        (Parser.prefixed
+          (Parser.try
+            (Parser.map
+              (Parser.then (Parser.byte \-) (Parser.byte \-))
+              (fn [_] Int.neg)))
+          (Parser.Lexer.unsigned-int))
+        "-x"))
+    "expected-set: prefixed reports a deeper try'd prefix failure alone")
+
+  (assert-equal test
+    "parse error at 1:1; expected: 'c'"
+    &(error-message
+      (Parser.parse
+        (Parser.alt (Parser.byte \c)
+                    (Parser.try
+                      (Parser.then (Parser.byte \a)
+                                   (the (Parser Char) (Parser.choice [])))))
+        "ax"))
+    "expected-set: a labelled failure beats a deeper one with no labels")
+
+  (assert-equal test
+    "parse error at 1:1: unexpected 'x'; expected: digit, 'c'"
+    &(error-message
+      (Parser.parse (Parser.alt (Parser.Lexer.digit) (Parser.byte \c)) "x"))
+    "expected-set: alt keeps both labels in order and the unexpected byte at one position")
+
+  (assert-equal test
+    "parse error at 1:1: unexpected 'x'; expected: digit, 'c'"
+    &(error-message
+      (Parser.parse (Parser.choice [(Parser.Lexer.digit) (Parser.byte \c)]) "x"))
+    "expected-set: choice keeps both labels in order and the unexpected byte at one position")
+
+  (assert-equal test
+    "parse error at 1:1; expected: 'c'"
+    &(error-message
+      (Parser.parse
+        (Parser.choice
+          [(Parser.byte \c)
+           (Parser.try
+             (Parser.then (Parser.byte \a)
+                          (the (Parser Char) (Parser.choice []))))])
+        "ax"))
+    "expected-set: choice prefers a labelled failure to a deeper one with no labels")
 
   (assert-equal test
     -1
